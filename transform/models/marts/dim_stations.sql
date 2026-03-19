@@ -30,12 +30,6 @@ latest_stats as (
 
     from {{ ref('int_station_daily_stats') }}
 
-    -- Last 7 days of data for "recent" metrics
-    where hire_date >= date_sub(
-        (select max(hire_date) from {{ ref('int_station_daily_stats') }}),
-        interval 7 day
-    )
-
     group by 1
 
 ),
@@ -75,16 +69,16 @@ final as (
 
         -- ── rebalancing priority tier ─────────────────────────────
         case
-            when coalesce(ls.avg_imbalance_score_7d, 0) >= 0.5 then 'CRITICAL'
-            when coalesce(ls.avg_imbalance_score_7d, 0) >= 0.3 then 'HIGH'
-            when coalesce(ls.avg_imbalance_score_7d, 0) >= 0.1 then 'MEDIUM'
-            else                                                      'LOW'
+            when coalesce(ls.avg_imbalance_score_7d, 0) >= 0.25 then 'CRITICAL'
+            when coalesce(ls.avg_imbalance_score_7d, 0) >= 0.18 then 'HIGH'
+            when coalesce(ls.avg_imbalance_score_7d, 0) >= 0.10 then 'MEDIUM'
+            else                                                       'LOW'
         end as rebalancing_priority
 
     from stations s
 
     left join latest_stats ls
-        on s.station_id = ls.station_id
+        on cast(s.station_id as int64) = cast(ls.station_id as int64)
 
 )
 

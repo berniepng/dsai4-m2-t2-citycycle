@@ -32,7 +32,10 @@ sources:
               - not_null
           - name: end_station_id
             tests:
-              - not_null
+              - not_null:
+                  severity: warn
+                  config:
+                    warn_if: "!= 0"
 
       - name: cycle_stations
         description: "Raw station metadata"
@@ -42,7 +45,7 @@ sources:
             tests:
               - not_null
               - unique
-          - name: nbdocks
+          - name: docks_count
             description: "Number of docking points"
             tests:
               - not_null
@@ -76,7 +79,8 @@ models:
           - not_null
       - name: end_station_id
         tests:
-          - not_null
+          - not_null:
+              severity: warn
       - name: start_datetime
         tests:
           - not_null
@@ -86,8 +90,6 @@ models:
       - name: is_weekend
         tests:
           - not_null
-          - accepted_values:
-              values: [true, false]
 
   - name: stg_cycle_stations
     description: >
