@@ -175,12 +175,16 @@ jobs:
 
       - name: dbt parse — validate all model SQL syntax
         working-directory: transform
+        env:
+          GCP_PROJECT_ID: citycycle-ci-placeholder
         run: |
           dbt parse --profiles-dir ~/.dbt
           echo "All models parsed successfully ✓"
 
       - name: dbt compile — expand Jinja, check SQL renders
         working-directory: transform
+        env:
+          GCP_PROJECT_ID: citycycle-ci-placeholder
         run: |
           dbt compile --profiles-dir ~/.dbt
           echo "All models compiled successfully ✓"
