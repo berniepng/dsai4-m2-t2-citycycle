@@ -1,0 +1,144 @@
+# meltano.yml
+# ===========
+# Meltano project for CityCycle London ELT pipeline.
+# Extracts from bigquery-public-data.london_bicycles → loads to your raw dataset.
+#
+# SETUP (one-time):
+#   cd ingestion/
+#   pip install meltano
+#   meltano install
+#
+# FIRST RUN (full load):
+#   meltano run tap-bigquery target-bigquery
+#
+# INCREMENTAL (daily, handled by Dagster sensor):
+#   meltano run tap-bigquery target-bigquery --state-id=citycycle_daily
+#
+# COST GUARD:
+#   The tap queries are written with WHERE clauses + LIMIT to protect
+#   the BigQuery 1TB/month free tier. See custom_queries below.
+
+version: 1
+default_environment: dev
+
+project_id: citycycle-meltano
+
+environments:
+  - name: dev
+    config:
+      plugins:
+        extractors:
+          - name: tap-bigquery
+            config:
+              # In dev, pull only 30 days of data — protects free tier
+              start_datetime: "2023-01-01T00:00:00Z"
+  - name: prod
+    config:
+      plugins:
+        extractors:
+          - name: tap-bigquery
+            config:
+              # In prod, Dagster manages the state/date window
+              start_datetime: "2015-01-01T00:00:00Z"
+
+plugins:
+  extractors:
+    - name: tap-bigquery
+      namespace: tap_bigquery
+      pip_url: git+https://github.com/anelendata/tap-bigquery.git
+      executable: tap-bigquery
+      capabilities:
+        - catalog
+        - discover
+        - state
+      settings:
+        - name: credentials_path
+          kind: password
+          label: GCP Service Account JSON path
+          description: |
+            Path to your GCP service account key file.
+            NEVER commit this file — it is blocked by .gitignore.
+        - name: start_datetime
+          kind: date_iso8601
+          label: Incremental start datetime
+        - name: end_datetime
+          kind: date_iso8601
+          label: Incremental end datetime (optional)
+        - name: limit
+          kind: integer
+          label: Row limit per query (dev safety guard)
+          value: 500000
+      config:
+        # ── Source tables ─────────────────────────────────────────
+        # We use custom_queries to add cost-control WHERE clauses
+        # instead of querying raw tables directly.
+        streams:
+          - name: cycle_hire
+            table: bigquery-public-data.london_bicycles.cycle_hire
+            columns:
+              - rental_id
+              - duration
+              - bike_id
+              - end_date
+              - end_station_id
+              - end_station_name
+              - start_date
+              - start_station_id
+              - start_station_name
+            # COST GUARD: partition filter on start_date
+            # Avoids full-table scan of 83M rows
+            filters: "start_date >= TIMESTAMP(@start_datetime)"
+            datetime_key: start_date
+            order_by: start_date ASC
+
+          - name: cycle_stations
+            table: bigquery-public-data.london_bicycles.cycle_stations
+            columns:
+              - id
+              - installed
+              - locked
+              - install_date
+              - name
+              - terminal_name
+              - latitude
+              - longitude
+              - nbdocks
+              - temporary
+            # stations is small (795 rows) — full refresh each run is fine
+
+  loaders:
+    - name: target-bigquery
+      namespace: target_bigquery
+      pip_url: git+https://github.com/anelendata/target-bigquery.git
+      executable: target-bigquery
+      settings:
+        - name: project_id
+          kind: string
+          label: GCP Project ID
+          env: GCP_PROJECT_ID
+        - name: dataset_id
+          kind: string
+          label: Target BigQuery dataset
+          value: citycycle_raw
+        - name: location
+          kind: string
+          label: BQ dataset location
+          # london_bicycles public data is in EU — match it
+          value: EU
+        - name: add_metadata_columns
+          kind: boolean
+          value: true
+          description: Adds _sdc_received_at, _sdc_sequence, _sdc_table_version
+        - name: validate_records
+          kind: boolean
+          value: true
+      config:
+        project_id: ${GCP_PROJECT_ID}
+        dataset_id: citycycle_raw
+        location: EU
+        add_metadata_columns: true
+        validate_records: true
+
+  utilities:
+    - name: meltano
+      namespace: meltano

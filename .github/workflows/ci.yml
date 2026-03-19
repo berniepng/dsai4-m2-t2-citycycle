@@ -1,0 +1,358 @@
+# .github/workflows/ci.yml
+# ==========================
+# CityCycle London — Continuous Integration
+#
+# Triggers:
+#   • Every push to main
+#   • Every pull request targeting main
+#
+# Jobs (all run on mock data — zero BigQuery API calls):
+#   1. lint          — ruff + black check
+#   2. mock-data     — generate & validate mock CSVs
+#   3. dbt-compile   — dry-run all dbt models (no BQ connection needed)
+#   4. train-model   — train ML model on mock data, assert RMSE < 10
+#   5. notebook      — execute EDA notebook headlessly, assert zero errors
+#
+# COST GUARANTEE:
+#   No job in this workflow queries BigQuery.
+#   All tests run against data/mock/ CSV files.
+#   GCP credentials are NOT required or used.
+
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+# Cancel in-progress runs for the same branch on new pushes
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+
+# ══════════════════════════════════════════════════════════════════
+# JOB 1 — Lint
+# ══════════════════════════════════════════════════════════════════
+jobs:
+  lint:
+    name: "Lint (ruff + black)"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install linters
+        run: pip install ruff black
+
+      - name: ruff — check for errors and style issues
+        run: |
+          ruff check \
+            dashboard/ ingestion/ ml/ orchestration/ quality/ \
+            --ignore E501,E402 \
+            --output-format=github
+
+      - name: black — check formatting
+        run: |
+          black --check --diff \
+            dashboard/ ingestion/ ml/ orchestration/ quality/
+
+# ══════════════════════════════════════════════════════════════════
+# JOB 2 — Mock data generation & validation
+# ══════════════════════════════════════════════════════════════════
+  mock-data:
+    name: "Mock data — generate & validate"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install pandas numpy faker
+
+      - name: Generate mock data
+        run: python dashboard/utils/mock_data_generator.py --rides 5000 --seed 42
+
+      - name: Validate output files exist
+        run: |
+          test -f data/mock/cycle_stations_mock.csv || (echo "stations CSV missing" && exit 1)
+          test -f data/mock/cycle_hire_mock.csv     || (echo "rides CSV missing"    && exit 1)
+          echo "Both mock CSV files present ✓"
+
+      - name: Validate row counts
+        run: |
+          python - <<'EOF'
+          import pandas as pd, sys
+
+          stations = pd.read_csv("data/mock/cycle_stations_mock.csv")
+          rides    = pd.read_csv("data/mock/cycle_hire_mock.csv")
+
+          assert len(stations) == 795,  f"Expected 795 stations, got {len(stations)}"
+          assert len(rides)    == 5000, f"Expected 5000 rides, got {len(rides)}"
+          assert stations["id"].is_unique,       "station id must be unique"
+          assert rides["rental_id"].is_unique,   "rental_id must be unique"
+          assert rides["rental_id"].notna().all(),"rental_id must not be null"
+
+          rides["duration"] = rides["duration"].astype(int)
+          assert (rides["duration"] >= 60).all(),    "duration below minimum"
+          assert (rides["duration"] <= 86400).all(), "duration above maximum"
+
+          start = pd.to_datetime(rides["start_date"])
+          end   = pd.to_datetime(rides["end_date"])
+          assert (end > start).all(), "end_date must be after start_date"
+
+          print(f"Stations : {len(stations)} rows ✓")
+          print(f"Rides    : {len(rides)} rows ✓")
+          print("All validation checks passed ✓")
+          EOF
+
+      - name: Dry-run BQ loader (schema check only)
+        run: python ingestion/load_mock.py --mode=dry-run
+
+      - name: Upload mock data as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mock-data
+          path: data/mock/
+          retention-days: 1
+
+# ══════════════════════════════════════════════════════════════════
+# JOB 3 — dbt compile (no BQ connection required)
+# ══════════════════════════════════════════════════════════════════
+  dbt-compile:
+    name: "dbt — compile & parse all models"
+    runs-on: ubuntu-latest
+    needs: mock-data
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dbt-bigquery
+        run: pip install dbt-bigquery dbt-core
+
+      - name: Write CI dbt profiles (no real BQ credentials needed for compile)
+        run: |
+          mkdir -p ~/.dbt
+          cat > ~/.dbt/profiles.yml << 'PROFILES'
+          citycycle:
+            target: ci
+            outputs:
+              ci:
+                type: bigquery
+                method: oauth
+                project: citycycle-ci-placeholder
+                dataset: citycycle_ci
+                location: EU
+                threads: 1
+                timeout_seconds: 60
+          PROFILES
+          echo "profiles.yml written ✓"
+
+      - name: dbt deps — install packages
+        working-directory: transform
+        run: dbt deps --profiles-dir ~/.dbt
+
+      - name: dbt parse — validate all model SQL syntax
+        working-directory: transform
+        run: |
+          dbt parse --profiles-dir ~/.dbt
+          echo "All models parsed successfully ✓"
+
+      - name: dbt compile — expand Jinja, check SQL renders
+        working-directory: transform
+        run: |
+          dbt compile --profiles-dir ~/.dbt
+          echo "All models compiled successfully ✓"
+
+      - name: Check compiled SQL files were created
+        working-directory: transform
+        run: |
+          COMPILED=$(find target/compiled -name "*.sql" 2>/dev/null | wc -l)
+          echo "Compiled SQL files: $COMPILED"
+          test $COMPILED -ge 5 || (echo "Expected at least 5 compiled models" && exit 1)
+          echo "dbt compile output looks correct ✓"
+
+# ══════════════════════════════════════════════════════════════════
+# JOB 4 — ML model training on mock data
+# ══════════════════════════════════════════════════════════════════
+  train-model:
+    name: "ML — train on mock data, assert RMSE"
+    runs-on: ubuntu-latest
+    needs: mock-data
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install ML dependencies
+        run: pip install pandas numpy scikit-learn joblib
+
+      - name: Download mock data artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: mock-data
+          path: data/mock/
+
+      - name: Train demand model on mock data
+        run: python ml/models/train_demand_model.py --source mock
+
+      - name: Assert model file was created
+        run: |
+          test -f ml/models/demand_model.pkl || (echo "Model file not found!" && exit 1)
+          SIZE=$(du -k ml/models/demand_model.pkl | cut -f1)
+          echo "Model file size: ${SIZE}KB"
+          test $SIZE -gt 10 || (echo "Model file suspiciously small" && exit 1)
+          echo "Model file looks healthy ✓"
+
+      - name: Assert RMSE is within threshold
+        run: |
+          python - <<'EOF'
+          import pandas as pd, numpy as np, joblib, sys
+          from sklearn.model_selection import train_test_split
+          from sklearn.metrics import mean_squared_error
+
+          # Rebuild features (same logic as train script)
+          rides = pd.read_csv("data/mock/cycle_hire_mock.csv", parse_dates=["start_date"])
+          rides["hire_date"]   = rides["start_date"].dt.date
+          rides["hour"]        = rides["start_date"].dt.hour
+          rides["day_of_week"] = rides["start_date"].dt.dayofweek
+          rides["is_weekend"]  = (rides["day_of_week"] >= 5).astype(int)
+          rides["is_holiday"]  = 0
+
+          agg = (rides.groupby(["hire_date","start_station_id","hour","day_of_week","is_weekend","is_holiday"])
+                 .size().reset_index(name="ride_count"))
+          agg = agg.sort_values(["start_station_id","hire_date","hour"])
+          agg["rolling_7d_avg"] = (
+              agg.groupby(["start_station_id","hour"])["ride_count"]
+              .transform(lambda x: x.shift(1).rolling(7, min_periods=1).mean())
+              .fillna(0)
+          )
+
+          feature_cols = ["hour","day_of_week","is_weekend","is_holiday","start_station_id","rolling_7d_avg"]
+          X = agg[feature_cols]
+          y = agg["ride_count"]
+
+          _, X_test, _, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+          model = joblib.load("ml/models/demand_model.pkl")
+          y_pred = model.predict(X_test)
+          rmse = mean_squared_error(y_test, y_pred) ** 0.5
+
+          THRESHOLD = 10.0
+          print(f"Test RMSE: {rmse:.4f} rides/station/hour")
+          print(f"Threshold: {THRESHOLD}")
+
+          if rmse > THRESHOLD:
+              print(f"FAIL — RMSE {rmse:.2f} exceeds threshold {THRESHOLD}")
+              sys.exit(1)
+          else:
+              print(f"PASS — RMSE within acceptable range ✓")
+          EOF
+
+# ══════════════════════════════════════════════════════════════════
+# JOB 5 — Execute EDA notebook headlessly
+# ══════════════════════════════════════════════════════════════════
+  notebook:
+    name: "Notebook — execute all cells"
+    runs-on: ubuntu-latest
+    needs: mock-data
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install notebook dependencies
+        run: |
+          pip install \
+            pandas numpy matplotlib seaborn scikit-learn \
+            jupyter nbconvert ipykernel
+
+      - name: Register kernel
+        run: python -m ipykernel install --user --name python3
+
+      - name: Download mock data artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: mock-data
+          path: data/mock/
+
+      - name: Execute notebook
+        run: |
+          jupyter nbconvert \
+            --to notebook \
+            --execute \
+            --ExecutePreprocessor.timeout=180 \
+            --ExecutePreprocessor.kernel_name=python3 \
+            --output executed_ci.ipynb \
+            --output-dir /tmp/ \
+            analysis/notebooks/01_eda_mock_data.ipynb
+          echo "Notebook executed successfully ✓"
+
+      - name: Check for cell errors in output
+        run: |
+          python - <<'EOF'
+          import json, sys
+
+          with open("/tmp/executed_ci.ipynb") as f:
+              nb = json.load(f)
+
+          errors = []
+          for i, cell in enumerate(nb["cells"]):
+              if cell["cell_type"] != "code":
+                  continue
+              for output in cell.get("outputs", []):
+                  if output.get("output_type") == "error":
+                      errors.append({
+                          "cell": i + 1,
+                          "ename": output.get("ename"),
+                          "evalue": output.get("evalue"),
+                      })
+
+          if errors:
+              print(f"FAIL — {len(errors)} cell error(s) found:")
+              for e in errors:
+                  print(f"  Cell {e['cell']}: {e['ename']}: {e['evalue']}")
+              sys.exit(1)
+          else:
+              total = sum(1 for c in nb["cells"] if c["cell_type"] == "code")
+              print(f"PASS — {total} code cells executed, 0 errors ✓")
+          EOF
+
+      - name: Upload executed notebook as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: executed-notebook
+          path: /tmp/executed_ci.ipynb
+          retention-days: 7

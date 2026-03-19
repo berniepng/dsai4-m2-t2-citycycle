@@ -1,0 +1,97 @@
+# models/marts/_marts.yml
+# =========================
+# Schema tests for mart tables.
+
+version: 2
+
+models:
+  - name: fact_rides
+    description: >
+      Gold layer fact table. One row per rental. Partitioned by hire_date,
+      clustered by start/end station_id for efficient rebalancing queries.
+    columns:
+      - name: ride_sk
+        description: "Surrogate key"
+        tests:
+          - not_null
+          - unique
+      - name: rental_id
+        tests:
+          - not_null
+          - unique
+      - name: hire_date
+        tests:
+          - not_null
+      - name: duration_minutes
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 1440
+      - name: peak_hour_flag
+        tests:
+          - not_null
+          - accepted_values:
+              values: [0, 1]
+      - name: start_station_is_imbalanced
+        tests:
+          - not_null
+          - accepted_values:
+              values: [true, false]
+      - name: start_station_id
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_stations')
+              field: station_id
+      - name: duration_band
+        tests:
+          - accepted_values:
+              values: ["short", "medium", "long", "extended"]
+
+  - name: dim_stations
+    description: >
+      Station dimension with rebalancing priority tier.
+      One row per station.
+    columns:
+      - name: station_sk
+        tests:
+          - not_null
+          - unique
+      - name: station_id
+        tests:
+          - not_null
+          - unique
+      - name: zone
+        tests:
+          - not_null
+      - name: rebalancing_priority
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
+      - name: nb_docks
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 100
+
+  - name: dim_date
+    description: "Date spine 2015–2025 with UK bank holidays and season flags"
+    columns:
+      - name: date_id
+        tests:
+          - not_null
+          - unique
+      - name: full_date
+        tests:
+          - not_null
+          - unique
+      - name: is_weekend
+        tests:
+          - not_null
+      - name: season
+        tests:
+          - accepted_values:
+              values: ["spring", "summer", "autumn", "winter"]

@@ -1,0 +1,133 @@
+# models/staging/_staging.yml
+# =============================
+# Schema tests for staging models.
+# dbt runs these automatically after `dbt run` via `dbt test`.
+
+version: 2
+
+sources:
+  - name: raw
+    database: "{{ env_var('GCP_PROJECT_ID') }}"
+    schema: citycycle_raw
+    description: "Raw tables loaded by Meltano tap-bigquery or load_mock.py"
+    tables:
+      - name: cycle_hire
+        description: "Raw ride records from bigquery-public-data.london_bicycles.cycle_hire"
+        columns:
+          - name: rental_id
+            description: "Unique ride identifier"
+            tests:
+              - not_null
+              - unique
+          - name: duration
+            description: "Ride duration in seconds"
+            tests:
+              - not_null
+          - name: start_date
+            description: "Ride start timestamp"
+            tests:
+              - not_null
+          - name: start_station_id
+            tests:
+              - not_null
+          - name: end_station_id
+            tests:
+              - not_null
+
+      - name: cycle_stations
+        description: "Raw station metadata"
+        columns:
+          - name: id
+            description: "Unique station identifier"
+            tests:
+              - not_null
+              - unique
+          - name: nbdocks
+            description: "Number of docking points"
+            tests:
+              - not_null
+          - name: latitude
+            tests:
+              - not_null
+          - name: longitude
+            tests:
+              - not_null
+
+models:
+  - name: stg_cycle_hire
+    description: >
+      Cleaned and typed cycle hire records. One row per rental.
+      Filters out null rental_id and impossible durations.
+    columns:
+      - name: rental_id
+        description: "Unique ride identifier (PK)"
+        tests:
+          - not_null
+          - unique
+      - name: duration_seconds
+        description: "Ride duration in seconds (60–86400)"
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 60
+              max_value: 86400
+      - name: start_station_id
+        tests:
+          - not_null
+      - name: end_station_id
+        tests:
+          - not_null
+      - name: start_datetime
+        tests:
+          - not_null
+      - name: hire_date
+        tests:
+          - not_null
+      - name: is_weekend
+        tests:
+          - not_null
+          - accepted_values:
+              values: [true, false]
+
+  - name: stg_cycle_stations
+    description: >
+      Cleaned station records with zone classification and capacity tier.
+    columns:
+      - name: station_id
+        description: "Unique station identifier (PK)"
+        tests:
+          - not_null
+          - unique
+      - name: nb_docks
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 1
+              max_value: 100
+      - name: zone
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - "City & Shoreditch"
+                - "Westminster & Victoria"
+                - "Waterloo & Southbank"
+                - "Camden & Islington"
+                - "East End & Canary Wharf"
+                - "Kensington & Chelsea"
+                - "Other"
+      - name: capacity_tier
+        tests:
+          - not_null
+          - accepted_values:
+              values: ["small", "medium", "large"]
+      - name: latitude
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 51.3
+              max_value: 51.7
+      - name: longitude
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: -0.6
+              max_value: 0.3

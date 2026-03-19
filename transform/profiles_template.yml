@@ -1,0 +1,43 @@
+# profiles_template.yml
+# ======================
+# Copy this to ~/.dbt/profiles.yml (NOT inside the repo).
+# Never commit profiles.yml — it contains credentials.
+#
+# Then set GCP_PROJECT_ID in your .env file.
+
+citycycle:
+  target: dev
+  outputs:
+
+    dev:
+      type: bigquery
+      method: oauth                      # uses `gcloud auth application-default login`
+      # OR use service account:
+      # method: service-account
+      # keyfile: /path/to/keyfile.json   # blocked by .gitignore
+
+      project: "{{ env_var('GCP_PROJECT_ID') }}"
+      dataset: citycycle_dev             # dev uses a separate dataset — never pollutes prod
+      location: EU                       # must match london_bicycles source location
+      threads: 4
+      timeout_seconds: 300
+
+      # ── COST GUARD: limit rows in dev ──────────────────────────
+      # This adds LIMIT 1000 to every model in dev automatically.
+      # Remove or increase when running full pipeline in prod.
+      vars:
+        dev_limit: 1000
+        is_dev: true
+
+    prod:
+      type: bigquery
+      method: service-account
+      keyfile: "{{ env_var('GOOGLE_APPLICATION_CREDENTIALS') }}"
+      project: "{{ env_var('GCP_PROJECT_ID') }}"
+      dataset: citycycle_marts
+      location: EU
+      threads: 8
+      timeout_seconds: 600
+      vars:
+        dev_limit: null
+        is_dev: false
