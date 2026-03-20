@@ -247,8 +247,15 @@ jobs:
           rides["day_of_week"] = rides["start_date"].dt.dayofweek
           rides["is_weekend"]  = (rides["day_of_week"] >= 5).astype(int)
           rides["is_holiday"]  = 0
+          rides["month"]       = rides["start_date"].dt.month
+          def get_season(m):
+              if m in (12, 1, 2): return 0
+              elif m in (3, 4, 5): return 1
+              elif m in (6, 7, 8): return 2
+              else: return 3
+          rides["season"] = rides["month"].apply(get_season)
 
-          agg = (rides.groupby(["hire_date","start_station_id","hour","day_of_week","is_weekend","is_holiday"])
+          agg = (rides.groupby(["hire_date","start_station_id","hour","day_of_week","is_weekend","is_holiday","season"])
                  .size().reset_index(name="ride_count"))
           agg = agg.sort_values(["start_station_id","hire_date","hour"])
           agg["rolling_7d_avg"] = (
@@ -257,7 +264,7 @@ jobs:
               .fillna(0)
           )
 
-          feature_cols = ["hour","day_of_week","is_weekend","is_holiday","start_station_id","rolling_7d_avg"]
+          feature_cols = ["hour","day_of_week","is_weekend","is_holiday","season","start_station_id","rolling_7d_avg"]
           X = agg[feature_cols]
           y = agg["ride_count"]
 
