@@ -31,21 +31,21 @@ from datetime import datetime
 from pathlib import Path
 
 # ── Budget thresholds ─────────────────────────────────────────────
-FREE_TIER_GB         = 1000.0   # BigQuery free tier: 1 TB/month
-MONTHLY_BUDGET_GB    = 800.0    # Stop at 800 GB (80% of free tier)
-WARNING_THRESHOLD_GB = 600.0    # Warn at 600 GB (60% of free tier)
-SINGLE_QUERY_LIMIT_GB = 50.0    # Refuse any single query over 50 GB
+FREE_TIER_GB = 1000.0  # BigQuery free tier: 1 TB/month
+MONTHLY_BUDGET_GB = 800.0  # Stop at 800 GB (80% of free tier)
+WARNING_THRESHOLD_GB = 600.0  # Warn at 600 GB (60% of free tier)
+SINGLE_QUERY_LIMIT_GB = 50.0  # Refuse any single query over 50 GB
 
 # ── Usage tracking file ───────────────────────────────────────────
 USAGE_FILE = Path(__file__).resolve().parent.parent / ".bq_usage.json"
 
 # ── Colours for terminal output ───────────────────────────────────
-RED    = "\033[91m"
+RED = "\033[91m"
 YELLOW = "\033[93m"
-GREEN  = "\033[92m"
-CYAN   = "\033[96m"
-RESET  = "\033[0m"
-BOLD   = "\033[1m"
+GREEN = "\033[92m"
+CYAN = "\033[96m"
+RESET = "\033[0m"
+BOLD = "\033[1m"
 
 
 class BQCostGuard:
@@ -96,13 +96,15 @@ class BQCostGuard:
     def _record_query(self, sql_preview: str, bytes_processed: int):
         month = self._usage[self._month_key]
         month["bytes_processed"] += bytes_processed
-        month["query_count"]     += 1
-        month["queries"].append({
-            "timestamp":       datetime.now().isoformat(),
-            "bytes_processed": bytes_processed,
-            "gb_processed":    round(bytes_processed / 1e9, 4),
-            "sql_preview":     sql_preview[:120],
-        })
+        month["query_count"] += 1
+        month["queries"].append(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "bytes_processed": bytes_processed,
+                "gb_processed": round(bytes_processed / 1e9, 4),
+                "sql_preview": sql_preview[:120],
+            }
+        )
         self._save_usage()
 
     # ── Dry-run estimate ──────────────────────────────────────────
@@ -110,6 +112,7 @@ class BQCostGuard:
     def estimate_bytes(self, sql: str) -> int:
         """Dry-run a query and return estimated bytes processed. No cost incurred."""
         from google.cloud import bigquery
+
         client = bigquery.Client(project=self.project_id)
         job_config = bigquery.QueryJobConfig(dry_run=True, use_query_cache=False)
         job = client.query(sql, job_config=job_config)
@@ -124,11 +127,13 @@ class BQCostGuard:
         Raises ValueError if any limit would be exceeded.
         """
         print(f"\n{CYAN}[BQ Cost Guard]{RESET} Checking: {label}")
-        print(f"  Monthly usage so far : {self.monthly_gb:.2f} GB / {MONTHLY_BUDGET_GB} GB budget")
+        print(
+            f"  Monthly usage so far : {self.monthly_gb:.2f} GB / {MONTHLY_BUDGET_GB} GB budget"
+        )
 
         # ── Dry run ───────────────────────────────────────────────
         estimated_bytes = self.estimate_bytes(sql)
-        estimated_gb    = estimated_bytes / 1e9
+        estimated_gb = estimated_bytes / 1e9
 
         print(f"  This query estimates : {estimated_gb:.3f} GB")
         print(f"  Would bring total to : {self.monthly_gb + estimated_gb:.2f} GB")
@@ -190,19 +195,21 @@ class BQCostGuard:
     def report(self):
         """Print a full usage report for the current month."""
         month = self._month_key
-        used_gb   = self.monthly_gb
+        used_gb = self.monthly_gb
         budget_gb = MONTHLY_BUDGET_GB
-        pct       = (used_gb / budget_gb * 100) if budget_gb > 0 else 0
+        pct = (used_gb / budget_gb * 100) if budget_gb > 0 else 0
 
-        bar_len  = 40
-        filled   = int(bar_len * pct / 100)
+        bar_len = 40
+        filled = int(bar_len * pct / 100)
         bar_char = "█" * filled + "░" * (bar_len - filled)
-        colour   = RED if pct > 80 else (YELLOW if pct > 60 else GREEN)
+        colour = RED if pct > 80 else (YELLOW if pct > 60 else GREEN)
 
         print(f"\n{BOLD}BigQuery Usage Report — {month}{RESET}")
         print(f"{'─' * 50}")
         print(f"  Used    : {used_gb:.3f} GB")
-        print(f"  Budget  : {budget_gb:.0f} GB  (free tier: {FREE_TIER_GB:.0f} GB/month)")
+        print(
+            f"  Budget  : {budget_gb:.0f} GB  (free tier: {FREE_TIER_GB:.0f} GB/month)"
+        )
         print(f"  Buffer  : {budget_gb - used_gb:.1f} GB remaining before block")
         print(f"  Queries : {self.monthly_query_count}")
         print(f"\n  {colour}{bar_char}{RESET}  {pct:.1f}%")
@@ -217,11 +224,14 @@ class BQCostGuard:
                 preview = q["sql_preview"][:60]
                 print(f"    {ts}  {gb:.4f} GB  {preview}...")
 
-        print(f"\n  {CYAN}Tip:{RESET} Always use WHERE hire_date >= ... to leverage partitioning.")
+        print(
+            f"\n  {CYAN}Tip:{RESET} Always use WHERE hire_date >= ... to leverage partitioning."
+        )
         print(f"  {CYAN}Tip:{RESET} Add LIMIT to all dev/exploratory queries.")
 
 
 # ── Safe query templates with built-in guardrails ────────────────
+
 
 def safe_fact_rides_query(project: str, days: int = 30, limit: int = 500_000) -> str:
     """
@@ -272,15 +282,21 @@ def safe_hourly_demand_query(project: str, days: int = 30) -> str:
 
 # ── CLI ───────────────────────────────────────────────────────────
 
+
 def main():
     import argparse
     from dotenv import load_dotenv
+
     load_dotenv()
 
     parser = argparse.ArgumentParser(description="BigQuery cost guard")
-    parser.add_argument("--report",  action="store_true", help="Show monthly usage report")
-    parser.add_argument("--check",   type=str, metavar="SQL", help="Dry-run a SQL query")
-    parser.add_argument("--reset",   action="store_true", help="Reset monthly usage counter")
+    parser.add_argument(
+        "--report", action="store_true", help="Show monthly usage report"
+    )
+    parser.add_argument("--check", type=str, metavar="SQL", help="Dry-run a SQL query")
+    parser.add_argument(
+        "--reset", action="store_true", help="Reset monthly usage counter"
+    )
     args = parser.parse_args()
 
     guard = BQCostGuard()

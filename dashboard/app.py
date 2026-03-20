@@ -29,19 +29,20 @@ st.set_page_config(
 
 # ── Sidebar ───────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("## 🚲")
+    st.image(
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a8/Santander_Cycles_logo.svg/240px-Santander_Cycles_logo.svg.png",
+        width=160,
+    )
     st.markdown("## CityCycle London")
     st.markdown("**Bike Rebalancing Intelligence**")
     st.markdown("---")
-    st.markdown(
-        """
+    st.markdown("""
     **Navigation**
     - 📊 Overview
     - 🗺 Station Map
     - ⚖️ Rebalancing
     - 🔮 Forecast
-    """
-    )
+    """)
     st.markdown("---")
 
     # Data source toggle
@@ -61,8 +62,7 @@ with st.sidebar:
 
 # ── Home page content ─────────────────────────────────────────────
 st.title("🚲 CityCycle London — Rebalancing Intelligence")
-st.markdown(
-    """
+st.markdown("""
 Welcome to the CityCycle operational dashboard. Use the **sidebar** to navigate between views,
 or use the **pages** in the left navigation.
 
@@ -72,8 +72,7 @@ or use the **pages** in the left navigation.
 | 🗺 **Station Map** | All 795 stations colour-coded by rebalancing urgency |
 | ⚖️ **Rebalancing** | Ranked intervention list with predicted demand delta |
 | 🔮 **Forecast** | 24-hour demand forecast per station from ML model |
-"""
-)
+""")
 
 if use_mock:
     st.info(

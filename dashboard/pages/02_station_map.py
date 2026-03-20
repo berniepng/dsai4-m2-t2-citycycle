@@ -15,10 +15,10 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-ROOT     = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[2]
 MOCK_DIR = ROOT / "data" / "mock"
-PROJECT  = os.environ.get("GCP_PROJECT_ID", "citycycle-dsai4")
-DATASET  = "citycycle_dev_marts"
+PROJECT = os.environ.get("GCP_PROJECT_ID", "citycycle-dsai4")
+DATASET = "citycycle_dev_marts"
 
 st.set_page_config(page_title="Station Map · CityCycle", page_icon="🗺", layout="wide")
 st.title("🗺 Station Map")
@@ -27,6 +27,7 @@ st.markdown("All docking stations, colour-coded by rebalancing priority.")
 # ── Dependency checks ─────────────────────────────────────────────
 try:
     import pydeck as pdk
+
     HAS_PYDECK = True
 except ImportError:
     HAS_PYDECK = False
@@ -35,46 +36,59 @@ try:
     import folium
     from folium.plugins import MarkerCluster, HeatMap
     from streamlit_folium import st_folium
+
     HAS_FOLIUM = True
 except ImportError:
     HAS_FOLIUM = False
 
 # ── Data loader ───────────────────────────────────────────────────
 
+
 @st.cache_data(ttl=3600)
 def load_station_map_data(use_mock=True) -> pd.DataFrame:
     if use_mock:
         stations = pd.read_csv(MOCK_DIR / "cycle_stations_mock.csv")
-        rides    = pd.read_csv(MOCK_DIR / "cycle_hire_mock.csv",
-                               parse_dates=["start_date"])
+        rides = pd.read_csv(
+            MOCK_DIR / "cycle_hire_mock.csv", parse_dates=["start_date"]
+        )
 
-        departures = rides.groupby("start_station_id").size().reset_index(name="departures")
-        arrivals   = rides.groupby("end_station_id").size().reset_index(name="arrivals")
-        arrivals   = arrivals.rename(columns={"end_station_id": "start_station_id"})
+        departures = (
+            rides.groupby("start_station_id").size().reset_index(name="departures")
+        )
+        arrivals = rides.groupby("end_station_id").size().reset_index(name="arrivals")
+        arrivals = arrivals.rename(columns={"end_station_id": "start_station_id"})
 
         flow = departures.merge(arrivals, on="start_station_id", how="outer").fillna(0)
-        flow["net_flow"]     = flow["departures"] - flow["arrivals"]
-        flow["total_moves"]  = flow["departures"] + flow["arrivals"]
-        flow["imb_score"]    = flow["net_flow"].abs() / flow["total_moves"].clip(lower=1)
+        flow["net_flow"] = flow["departures"] - flow["arrivals"]
+        flow["total_moves"] = flow["departures"] + flow["arrivals"]
+        flow["imb_score"] = flow["net_flow"].abs() / flow["total_moves"].clip(lower=1)
         flow["imb_direction"] = np.where(
-            flow["net_flow"] > 0, "draining",
-            np.where(flow["net_flow"] < 0, "filling", "balanced")
+            flow["net_flow"] > 0,
+            "draining",
+            np.where(flow["net_flow"] < 0, "filling", "balanced"),
         )
 
         df = stations.merge(
-            flow.rename(columns={"start_station_id": "id"}),
-            on="id", how="left"
-        ).fillna({"imb_score": 0, "departures": 0, "arrivals": 0,
-                   "net_flow": 0, "imb_direction": "balanced"})
+            flow.rename(columns={"start_station_id": "id"}), on="id", how="left"
+        ).fillna(
+            {
+                "imb_score": 0,
+                "departures": 0,
+                "arrivals": 0,
+                "net_flow": 0,
+                "imb_direction": "balanced",
+            }
+        )
 
         df["priority"] = pd.cut(
             df["imb_score"],
             bins=[-0.01, 0.1, 0.3, 0.5, 1.01],
-            labels=["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+            labels=["LOW", "MEDIUM", "HIGH", "CRITICAL"],
         ).astype(str)
 
     else:
         from sqlalchemy import create_engine, text
+
         engine = create_engine(f"bigquery://{PROJECT}/{DATASET}")
         sql = f"""
             SELECT
@@ -92,9 +106,12 @@ def load_station_map_data(use_mock=True) -> pd.DataFrame:
         """
         with engine.connect() as conn:
             df = pd.read_sql(text(sql), conn)
-        df["net_flow"]      = df["departures"] - df["arrivals"]
-        df["imb_direction"] = np.where(df["net_flow"] > 0, "draining",
-                              np.where(df["net_flow"] < 0, "filling", "balanced"))
+        df["net_flow"] = df["departures"] - df["arrivals"]
+        df["imb_direction"] = np.where(
+            df["net_flow"] > 0,
+            "draining",
+            np.where(df["net_flow"] < 0, "filling", "balanced"),
+        )
 
     # ── Shared colour helpers ─────────────────────────────────────
     def score_to_rgb(score):
@@ -117,9 +134,9 @@ def load_station_map_data(use_mock=True) -> pd.DataFrame:
         else:
             return "#EF4444"
 
-    df["colour"]     = df["imb_score"].apply(score_to_rgb)
+    df["colour"] = df["imb_score"].apply(score_to_rgb)
     df["hex_colour"] = df["imb_score"].apply(score_to_hex)
-    df["radius"]     = (df["imb_score"] * 200 + 60).clip(upper=300)
+    df["radius"] = (df["imb_score"] * 200 + 60).clip(upper=300)
 
     return df
 
@@ -143,19 +160,20 @@ with st.sidebar:
     )
 
 filtered = df[
-    df["priority"].isin(priority_filter) &
-    df["imb_direction"].isin(direction_filter)
+    df["priority"].isin(priority_filter) & df["imb_direction"].isin(direction_filter)
 ]
 
 # ── Summary stats ─────────────────────────────────────────────────
 c1, c2, c3, c4 = st.columns(4)
-c1.metric("Total Stations",    len(df))
+c1.metric("Total Stations", len(df))
 c2.metric("Filtered Stations", len(filtered))
-c3.metric("Critical",
-          len(df[df["priority"] == "CRITICAL"]),
-          delta="need urgent attention", delta_color="inverse")
-c4.metric("Draining Now",
-          len(df[df["imb_direction"] == "draining"]))
+c3.metric(
+    "Critical",
+    len(df[df["priority"] == "CRITICAL"]),
+    delta="need urgent attention",
+    delta_color="inverse",
+)
+c4.metric("Draining Now", len(df[df["imb_direction"] == "draining"]))
 
 st.markdown("---")
 
@@ -195,7 +213,7 @@ if HAS_PYDECK and len(filtered) > 0:
             "color": "#F8FAFC",
             "fontSize": "13px",
             "padding": "8px",
-        }
+        },
     }
     deck = pdk.Deck(
         layers=[scatter_layer],
@@ -204,11 +222,16 @@ if HAS_PYDECK and len(filtered) > 0:
         map_style="mapbox://styles/mapbox/light-v11",
     )
     st.pydeck_chart(deck, use_container_width=True)
-    st.caption("🟢 LOW  🟡 MEDIUM  🟠 HIGH  🔴 CRITICAL  |  Radius = imbalance severity  |  Click a station for details")
+    st.caption(
+        "🟢 LOW  🟡 MEDIUM  🟠 HIGH  🔴 CRITICAL  |  Radius = imbalance severity  |  Click a station for details"
+    )
 elif not HAS_PYDECK:
     st.info("Install pydeck for the 3D map: `pip install pydeck`")
-    st.map(filtered[["latitude","longitude"]].rename(
-        columns={"latitude":"lat","longitude":"lon"}))
+    st.map(
+        filtered[["latitude", "longitude"]].rename(
+            columns={"latitude": "lat", "longitude": "lon"}
+        )
+    )
 else:
     st.info("No stations match the current filters.")
 
@@ -240,22 +263,31 @@ else:
     )
 
     # ── Tile layers ───────────────────────────────────────────────
-    folium.TileLayer(tiles="CartoDB positron",
-                     name="Light (CartoDB)", control=True).add_to(m)
-    folium.TileLayer(tiles="OpenStreetMap",
-                     name="OpenStreetMap", control=True).add_to(m)
+    folium.TileLayer(
+        tiles="CartoDB positron", name="Light (CartoDB)", control=True
+    ).add_to(m)
+    folium.TileLayer(tiles="OpenStreetMap", name="OpenStreetMap", control=True).add_to(
+        m
+    )
 
     # ── Layer: clustered markers ──────────────────────────────────
-    cluster_group  = folium.FeatureGroup(name="Station Clusters", show=True)
+    cluster_group = folium.FeatureGroup(name="Station Clusters", show=True)
     marker_cluster = MarkerCluster(
         options={"maxClusterRadius": 40, "disableClusteringAtZoom": 15}
     ).add_to(cluster_group)
 
     for _, row in filtered.iterrows():
-        icon_colour = {"LOW": "green", "MEDIUM": "orange",
-                       "HIGH": "red", "CRITICAL": "darkred"}.get(row["priority"], "gray")
-        icon_symbol = {"draining": "arrow-up", "filling": "arrow-down",
-                       "balanced": "pause"}.get(row["imb_direction"], "info-sign")
+        icon_colour = {
+            "LOW": "green",
+            "MEDIUM": "orange",
+            "HIGH": "red",
+            "CRITICAL": "darkred",
+        }.get(row["priority"], "gray")
+        icon_symbol = {
+            "draining": "arrow-up",
+            "filling": "arrow-down",
+            "balanced": "pause",
+        }.get(row["imb_direction"], "info-sign")
 
         docks = int(row.get("nbdocks", row.get("nb_docks", row.get("docks_count", 0))))
 
@@ -309,13 +341,23 @@ else:
 
     # ── Layer: heatmap ────────────────────────────────────────────
     heat_group = folium.FeatureGroup(name="Imbalance Heatmap", show=False)
-    heat_data  = filtered[filtered["imb_score"] > 0][
-        ["latitude", "longitude", "imb_score"]].values.tolist()
+    heat_data = filtered[filtered["imb_score"] > 0][
+        ["latitude", "longitude", "imb_score"]
+    ].values.tolist()
     if heat_data:
-        HeatMap(heat_data, min_opacity=0.3, max_zoom=18,
-                radius=20, blur=15,
-                gradient={"0.2": "#22C55E", "0.5": "#EAB308",
-                          "0.7": "#F97316", "1.0": "#EF4444"}).add_to(heat_group)
+        HeatMap(
+            heat_data,
+            min_opacity=0.3,
+            max_zoom=18,
+            radius=20,
+            blur=15,
+            gradient={
+                "0.2": "#22C55E",
+                "0.5": "#EAB308",
+                "0.7": "#F97316",
+                "1.0": "#EF4444",
+            },
+        ).add_to(heat_group)
     heat_group.add_to(m)
 
     # ── Layer: critical only ──────────────────────────────────────
@@ -323,8 +365,11 @@ else:
     for _, row in filtered[filtered["priority"] == "CRITICAL"].iterrows():
         folium.CircleMarker(
             location=[row["latitude"], row["longitude"]],
-            radius=14, color="#EF4444",
-            fill=True, fill_color="#EF4444", fill_opacity=0.6,
+            radius=14,
+            color="#EF4444",
+            fill=True,
+            fill_color="#EF4444",
+            fill_opacity=0.6,
             popup=row["name"],
             tooltip=f"CRITICAL: {row['name']}",
         ).add_to(critical_group)
@@ -332,7 +377,8 @@ else:
 
     folium.LayerControl(collapsed=False).add_to(m)
     folium.plugins.MeasureControl(
-        position="bottomleft", primary_length_unit="kilometers").add_to(m)
+        position="bottomleft", primary_length_unit="kilometers"
+    ).add_to(m)
 
     st_folium(m, use_container_width=True, height=600, returned_objects=[])
 
@@ -346,8 +392,15 @@ st.markdown("---")
 
 # ── Detailed table ────────────────────────────────────────────────
 st.subheader(f"Station Details — {len(filtered)} stations")
-display_cols = ["name", "priority", "imb_direction", "imb_score",
-                "net_flow", "departures", "arrivals"]
+display_cols = [
+    "name",
+    "priority",
+    "imb_direction",
+    "imb_score",
+    "net_flow",
+    "departures",
+    "arrivals",
+]
 if "nbdocks" in filtered.columns:
     display_cols.append("nbdocks")
 elif "nb_docks" in filtered.columns:
@@ -358,28 +411,32 @@ elif "docks_count" in filtered.columns:
 st.dataframe(
     filtered[display_cols]
     .sort_values("imb_score", ascending=False)
-    .rename(columns={
-        "name":          "Station",
-        "priority":      "Priority",
-        "imb_direction": "Direction",
-        "imb_score":     "Imbalance Score",
-        "net_flow":      "Net Flow",
-        "departures":    "Departures",
-        "arrivals":      "Arrivals",
-        "nbdocks":       "Docks",
-        "nb_docks":      "Docks",
-        "docks_count":   "Docks",
-    }),
+    .rename(
+        columns={
+            "name": "Station",
+            "priority": "Priority",
+            "imb_direction": "Direction",
+            "imb_score": "Imbalance Score",
+            "net_flow": "Net Flow",
+            "departures": "Departures",
+            "arrivals": "Arrivals",
+            "nbdocks": "Docks",
+            "nb_docks": "Docks",
+            "docks_count": "Docks",
+        }
+    ),
     use_container_width=True,
     hide_index=True,
     column_config={
         "Imbalance Score": st.column_config.ProgressColumn(
             "Imbalance Score", min_value=0, max_value=1, format="%.3f"
         ),
-    }
+    },
 )
 
 if use_mock:
-    st.caption("Data source: mock CSV — toggle off to query live BigQuery (dim_stations)")
+    st.caption(
+        "Data source: mock CSV — toggle off to query live BigQuery (dim_stations)"
+    )
 else:
     st.caption(f"Data source: {PROJECT}.{DATASET}.dim_stations")
