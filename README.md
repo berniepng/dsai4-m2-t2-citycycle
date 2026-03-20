@@ -20,7 +20,7 @@
    - [3. ELT Transformation (dbt)](#3-elt-transformation-dbt)
    - [4. Data Quality (Great Expectations)](#4-data-quality-great-expectations)
    - [5. Analysis & ML (Python / scikit-learn)](#5-analysis--ml)
-   - [6. Orchestration (Dagster)](#6-orchestration-dagster)
+   - [6. Orchestration (GitHub Actions CI)](#6-orchestration-github-actions-ci)
    - [7. Dashboards (Streamlit + Looker Studio)](#7-dashboards)
 9. [Key Findings (Mock Data)](#key-findings-mock-data)
 10. [Risks & Mitigations](#risks--mitigations)
@@ -47,7 +47,7 @@ London's CityCycle bike-sharing network operates **795 docking stations** across
 BigQuery Public Data → Meltano Ingest → BQ Raw → dbt Transform
 → Great Expectations Quality Gate → ML Demand Forecast
 → Streamlit Dashboard + Looker Studio Report
-(All orchestrated by Dagster, running daily at 02:00 UTC)
+(CI/CD orchestrated by GitHub Actions · 5 jobs · push-triggered)
 ```
 
 ---
@@ -71,7 +71,6 @@ The pipeline follows a **medallion-style** architecture:
 | Warehouse | **Google BigQuery** | Cloud data warehouse, star schema |
 | Transform | **dbt Core** | SQL-based ELT, lineage, testing |
 | Quality | **Great Expectations** | Expectation suites, checkpoints, data docs |
-| Orchestration | **Dagster** | Asset-based pipeline, schedules, alerts |
 | Analysis | **Python / pandas / scikit-learn** | EDA, feature engineering, ML |
 | Dashboard | **Streamlit** | Interactive ops dashboard + geospatial map |
 | BI Reporting | **Looker Studio** | Executive KPI report (BQ connector) |
@@ -235,8 +234,7 @@ cd ingestion && meltano run tap-bigquery target-bigquery
 
 # Then continue with dbt + GE as above
 
-# Or run full Dagster pipeline
-dagster dev -f orchestration/workspace.yaml
+# See .github/workflows/ci.yml for the full CI pipeline
 ```
 
 ---
@@ -349,20 +347,21 @@ Results are published as HTML data docs.
 - **Models tested**: RandomForest, XGBoost, LinearRegression (baseline)
 - **Metric**: RMSE on 20% holdout; MAE for operational thresholds
 
-### 6. Orchestration (Dagster)
+### 6. Orchestration (GitHub Actions CI)
+
+GitHub Actions runs 5 jobs on every push to `main`:
 
 ```
-Daily cron: 02:00 UTC
+push to main
 │
-├── meltano_ingest_asset       (Meltano run, retry x3)
-│   └── ge_post_ingest_asset   (Great Expectations checkpoint)
-│       └── dbt_run_asset      (dbt run + dbt test)
-│           └── ge_post_transform_asset
-│               ├── ml_train_asset     (retrain model if new data)
-│               └── dashboard_refresh  (update Streamlit cache)
+├── lint              (ruff + black — code style enforcement)
+├── mock-data         (generate + validate mock CSV files)
+├── dbt-compile       (dbt compile + dbt test against mock data)
+├── train-model       (train XGBoost on mock data, validate RMSE)
+└── notebook          (validate notebook structure)
 ```
 
-On failure at any stage: pipeline halts, Slack alert sent to #citycycle-data-ops.
+All jobs run against mock data only — no live BigQuery calls in CI. The Dagster orchestration scaffold is included in `orchestration/` for reference and future production use.
 
 ### 7. Dashboards
 
@@ -404,7 +403,7 @@ On failure at any stage: pipeline halts, Slack alert sent to #citycycle-data-ops
 | BigQuery free tier exceeded | Medium | High | Mock data dev; LIMIT guards; dry-run estimates; budget alerts |
 | Meltano tap-bigquery schema drift | Low | Medium | dbt schema tests; GE not-null/type checks catch regressions |
 | Long BQ query runtime in CI | Medium | Medium | CI uses mock CSV only; no live BQ in GitHub Actions |
-| ML model staleness | Medium | Medium | Dagster daily retrain asset; model version tracking |
+| ML model staleness | Medium | Medium | Retrain script in `train_demand_model.py`; model versioned in `ml/models/` |
 | Dashboard downtime | Low | Low | Streamlit caches last-good result; graceful error states |
 | Credentials leaked to Git | Low | Critical | .gitignore covers all credential patterns; .env.example only |
 
