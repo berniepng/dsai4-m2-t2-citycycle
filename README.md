@@ -329,9 +329,12 @@ Results are published as HTML data docs.
 - **Models tested**: RandomForest, XGBoost, LinearRegression (baseline)
 - **Metric**: RMSE on 20% holdout; MAE for operational thresholds
 
-### 6. Orchestration (GitHub Actions CI)
+### 6. Orchestration
 
-GitHub Actions runs 5 jobs on every push to `main`:
+CityCycle uses two complementary orchestration layers:
+
+#### GitHub Actions CI (code quality)
+Runs 5 jobs on every push to `main`:
 
 ```
 push to main
@@ -343,7 +346,34 @@ push to main
 └── notebook          (validate notebook structure)
 ```
 
-All jobs run against mock data only — no live BigQuery calls in CI. The Dagster orchestration scaffold is included in `orchestration/` for reference and future production use.
+#### Dagster (pipeline orchestration — proof of concept)
+
+Dagster manages the data pipeline as software-defined assets with explicit dependency tracking, metadata logging, and a visual asset graph. The pipeline runs end-to-end against mock data as a proof of concept. In production, `mock_bq_load_asset` would be replaced by `meltano_ingest_asset` to trigger live BigQuery ingestion.
+
+**Asset dependency graph:**
+
+![Dagster Asset Graph](docs/diagrams/dagster_asset_graph.svg)
+
+**Pipeline execution order:**
+
+```
+mock_data_asset          (generate 10K synthetic rides + stations)
+  └── mock_bq_load_asset (validate CSV schema — zero BQ cost)
+        ├── post_ingest_ge_asset     ← quality gate 1 (14 checks)
+        └── dbt_compile_asset        (validate 7 dbt models compile)
+              └── dbt_test_asset     (run 57 dbt schema tests)
+                    └── post_transform_ge_asset  ← quality gate 2
+```
+
+**Run the pipeline locally:**
+
+```bash
+pip install dagster dagster-webserver
+dagster dev -f orchestration/jobs/citycycle_pipeline_job.py
+# Open http://localhost:3000 → click Materialize all
+```
+
+**Production architecture (future):** Replace `mock_bq_load_asset` with `meltano_ingest_asset` to run the full pipeline against live BigQuery on the daily 02:00 UTC schedule defined in `citycycle_daily_02utc`.
 
 ### 7. Dashboards
 

@@ -19,7 +19,9 @@ DBT_DIR = ROOT / "transform"
 
 def _run_dbt(args: list, context: AssetExecutionContext) -> subprocess.CompletedProcess:
     log = get_dagster_logger()
-    cmd = ["dbt"] + args + ["--profiles-dir", str(DBT_DIR)]
+    from pathlib import Path as _Path
+    profiles_dir = str(_Path.home() / ".dbt")
+    cmd = ["dbt"] + args + ["--profiles-dir", profiles_dir]
     log.info(f"Running: {' '.join(cmd)}")
 
     result = subprocess.run(
