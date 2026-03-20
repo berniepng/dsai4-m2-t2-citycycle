@@ -379,19 +379,23 @@ On failure at any stage: pipeline halts, Slack alert sent to #citycycle-data-ops
 
 ---
 
-## Key Findings (Mock Data)
+## Key Findings (Live Data — 32M Rides, 2020–2023)
 
-> These findings are based on **synthetic mock data** that mirrors the shape and distribution of the real London Bicycles dataset. They will be updated with actual findings once the live pipeline runs.
+> These findings are based on **32,342,086 real rides** from `bigquery-public-data.london_bicycles` ingested into the CityCycle data warehouse and analysed via the full ELT pipeline.
 
-| Metric | Mock Value | Insight |
-|--------|-----------|---------|
-| Avg ride duration | 18.4 min | Primarily short-hop commuter trips |
-| Peak demand hours | 08:00 & 17:30 | Classic commuter double peak |
-| Top imbalanced stations | Waterloo, King's Cross, Liverpool St | Major transit hubs net-export bikes AM |
-| Imbalanced station rate | ~23% of stations | 1 in 4 stations needs daily rebalancing |
-| Forecast model RMSE | 4.2 rides/hr | Within operational planning threshold |
-
----
+| Metric | Value | Insight |
+|--------|-------|---------|
+| Total rides analysed | 32,342,086 | Full 2020–2023 dataset |
+| Avg ride duration | 21.8 min | Short-hop commuter and leisure trips |
+| Peak hour share | 29.4% | Nearly 1 in 3 rides during peak hours |
+| Peak demand hours | 08:00 & 17:00–18:00 | Classic London commuter double peak |
+| Weekend rides | 9,472,827 (29.3%) | Strong leisure demand on weekends |
+| Imbalanced station rate | 6.15% of rides | Stations flagged above 0.2 threshold |
+| Critical stations | 3 | Require urgent daily intervention |
+| High priority stations | 27 | Require scheduled intervention |
+| ML model (XGBoost) RMSE | 2.422 rides/station/hour | Best of 3 models tested |
+| ML model R² | 0.488 | Explains 49% of demand variance |
+| Top draining zone | South Quay East, Canary Wharf | Score 0.50 — needs bikes delivered daily |
 
 ## Risks & Mitigations
 
@@ -405,6 +409,157 @@ On failure at any stage: pipeline halts, Slack alert sent to #citycycle-data-ops
 | Credentials leaked to Git | Low | Critical | .gitignore covers all credential patterns; .env.example only |
 
 ---
+
+
+---
+
+## Data Dictionary
+
+### Source Tables (`citycycle_raw`)
+
+#### `cycle_hire` — Raw ride records
+| Field | Type | Description |
+|-------|------|-------------|
+| `rental_id` | INT64 | Unique identifier for each ride |
+| `bike_id` | INT64 | Identifier of the bike used |
+| `duration` | INT64 | Ride duration in seconds |
+| `start_date` | TIMESTAMP | Date and time the ride began |
+| `end_date` | TIMESTAMP | Date and time the ride ended |
+| `start_station_id` | INT64 | ID of the station where the bike was hired |
+| `start_station_name` | STRING | Name of the hire station |
+| `end_station_id` | INT64 | ID of the station where the bike was returned (nullable — ~312K lost/unreturned bikes) |
+| `end_station_name` | STRING | Name of the return station |
+
+#### `cycle_stations` — Raw station metadata
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | INT64 | Unique station identifier |
+| `name` | STRING | Station name and location description |
+| `terminal_name` | STRING | Physical terminal code on the docking unit |
+| `latitude` | FLOAT64 | Station latitude (WGS84) |
+| `longitude` | FLOAT64 | Station longitude (WGS84) |
+| `docks_count` | INT64 | Number of physical docking points at the station |
+| `installed` | BOOL | Whether the station is currently installed |
+| `locked` | BOOL | Whether the station is locked/out of service |
+| `temporary` | BOOL | Whether the station is a temporary installation |
+| `install_date` | DATE | Date the station was installed |
+
+---
+
+### Staging Layer (`citycycle_dev_staging`)
+
+#### `stg_cycle_hire` — Cleaned ride records
+All raw fields are retained and the following are added or renamed:
+
+| Field | Type | Source | Description |
+|-------|------|--------|-------------|
+| `rental_id` | INT64 | raw | Cast to INT64, null rows removed |
+| `bike_id` | INT64 | raw | Cast to INT64 |
+| `start_datetime` | TIMESTAMP | `start_date` | Renamed and cast to TIMESTAMP |
+| `end_datetime` | TIMESTAMP | `end_date` | Renamed and cast to TIMESTAMP |
+| `duration_seconds` | INT64 | `duration` | Renamed to make unit explicit |
+| `hire_date` | DATE | **Calculated** | `DATE(start_datetime)` — extracts the calendar date for partitioning and daily aggregations |
+| `start_hour` | INT64 | **Calculated** | `EXTRACT(HOUR FROM start_datetime)` — hour of day (0–23) used for temporal analysis and ML features |
+| `day_of_week` | INT64 | **Calculated** | `EXTRACT(DAYOFWEEK FROM start_datetime)` — 1=Sunday … 7=Saturday |
+| `is_weekend` | BOOL | **Calculated** | `TRUE` if day_of_week IN (1, 7) — used to split commuter vs leisure demand patterns |
+
+#### `stg_cycle_stations` — Cleaned station records
+| Field | Type | Source | Description |
+|-------|------|--------|-------------|
+| `station_id` | INT64 | `id` | Renamed for consistency |
+| `station_name` | STRING | `name` | Renamed for clarity |
+| `terminal_name` | STRING | raw | Physical terminal code |
+| `latitude` | FLOAT64 | raw | Cast to FLOAT64 |
+| `longitude` | FLOAT64 | raw | Cast to FLOAT64 |
+| `nb_docks` | INT64 | `docks_count` | Number of docking points |
+| `is_installed` | BOOL | `installed` | Renamed for consistency |
+| `is_locked` | BOOL | `locked` | Renamed for consistency |
+| `is_temporary` | BOOL | `temporary` | Renamed for consistency |
+| `install_date` | DATE | raw | Cast to DATE |
+| `zone` | STRING | **Calculated** | London area classification based on lat/lon bounding boxes: `City & Shoreditch`, `Westminster & Victoria`, `Waterloo & Southbank`, `Camden & Islington`, `East End & Canary Wharf`, `Kensington & Chelsea`, `Other`. Used for geographic aggregation in rebalancing analysis. |
+| `capacity_tier` | STRING | **Calculated** | Station size classification: `small` (≤15 docks), `medium` (≤24 docks), `large` (>24 docks). Used to contextualise imbalance severity — a small station becomes critical faster than a large one. |
+
+---
+
+### Intermediate Layer (`citycycle_dev_intermediate`)
+
+#### `int_rides_enriched` — Rides joined with station data
+Joins `stg_cycle_hire` with `stg_cycle_stations` (twice — once for start, once for end station) and adds business logic flags:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `duration_minutes` | FLOAT64 | **Calculated** — `duration_seconds / 60.0`. Human-readable duration used in all analysis and dashboards |
+| `duration_band` | STRING | **Calculated** — categorises ride length: `short` (<10 min), `medium` (10–30 min), `long` (30–60 min), `extended` (>60 min). Used for customer segmentation to distinguish commuter from leisure trips |
+| `peak_hour_flag` | INT64 | **Calculated** — `1` if start_hour IN (7, 8, 17, 18), else `0`. Marks London commuter peak hours (07:00–09:00 AM and 17:00–19:00 PM). Core feature for ML demand forecasting |
+| `time_period` | STRING | **Calculated** — finer-grained period: `am_peak`, `pm_peak`, `midday`, `evening`, `night`. Used as ML feature and for operational scheduling |
+| `is_round_trip` | BOOL | **Calculated** — `TRUE` if start_station_id = end_station_id. Identifies leisure loops vs point-to-point commuter rides |
+| `start_zone` | STRING | Joined from `stg_cycle_stations` — zone of the departure station |
+| `start_lat` / `start_lon` | FLOAT64 | Joined — coordinates for geospatial mapping |
+| `start_nb_docks` | INT64 | Joined — dock capacity of the departure station |
+| `start_capacity_tier` | STRING | Joined — size tier of the departure station |
+| `end_zone` | STRING | Joined from `stg_cycle_stations` — zone of the return station |
+| `end_lat` / `end_lon` | FLOAT64 | Joined — coordinates of return station |
+
+#### `int_station_daily_stats` — Daily imbalance per station
+Aggregates ride data to one row per station per day, computing the core rebalancing metrics:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `hire_date` | DATE | Calendar date |
+| `station_id` | INT64 | Station identifier |
+| `total_departures` | INT64 | **Calculated** — count of rides starting at this station on this date |
+| `total_arrivals` | INT64 | **Calculated** — count of rides ending at this station on this date |
+| `net_flow` | INT64 | **Calculated** — `total_departures - total_arrivals`. Positive = draining (bikes leaving), negative = filling (bikes accumulating) |
+| `imbalance_score` | FLOAT64 | **Calculated** — `ABS(net_flow) / (total_departures + total_arrivals)`. Normalised 0–1 score measuring how lopsided the flow is. 0 = perfectly balanced, 1 = entirely one-directional. Key metric for crew dispatch prioritisation |
+| `is_imbalanced` | BOOL | **Calculated** — `TRUE` if imbalance_score > 0.2. Flags stations exceeding the 20% flow imbalance threshold |
+| `imbalance_direction` | STRING | **Calculated** — `draining` (net_flow > 0, needs bikes delivered), `filling` (net_flow < 0, needs bikes collected), `balanced` (net_flow = 0) |
+| `utilisation_rate` | FLOAT64 | **Calculated** — `(total_departures + total_arrivals) / (nb_docks × 2)`. Measures how busy the station is relative to its capacity |
+| `peak_departures` | INT64 | **Calculated** — departures during peak hours only |
+| `rolling_7d_avg_departures` | FLOAT64 | **Calculated** (in fact_rides) — 7-day rolling average of departures, used as ML feature to capture demand momentum |
+
+---
+
+### Marts Layer (`citycycle_dev_marts`)
+
+#### `fact_rides` — Final fact table (32.3M rows)
+One row per ride, partitioned by `hire_date`, clustered by `start_station_id`. Combines all enriched ride fields with station-level imbalance signals joined from `int_station_daily_stats`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `ride_sk` | STRING | **Calculated** — surrogate key generated via `dbt_utils.generate_surrogate_key(['rental_id'])`. Stable unique key for the fact table |
+| `start_station_imbalance_score` | FLOAT64 | Joined from `int_station_daily_stats` — imbalance score of the departure station on the ride date |
+| `start_station_is_imbalanced` | BOOL | Joined — whether the departure station was flagged as imbalanced on the ride date |
+| `start_station_imbalance_direction` | STRING | Joined — `draining`, `filling`, or `balanced` for the departure station |
+| `start_station_net_flow` | INT64 | Joined — net bike flow at the departure station on the ride date |
+| `start_station_utilisation_rate` | FLOAT64 | Joined — utilisation rate of the departure station on the ride date |
+| `start_station_rolling_7d_avg` | FLOAT64 | Joined — 7-day rolling average demand at the departure station, used as ML feature |
+
+#### `dim_stations` — Station dimension table (798 rows)
+One row per station with all-time average imbalance metrics:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `station_sk` | STRING | **Calculated** — surrogate key |
+| `avg_imbalance_score_7d` | FLOAT64 | **Calculated** — all-time average imbalance score (named for historical reasons; now uses full dataset average after removing the 7-day filter that caused all-zero scores) |
+| `rebalancing_priority` | STRING | **Calculated** — tier classification: `CRITICAL` (score ≥ 0.25), `HIGH` (≥ 0.18), `MEDIUM` (≥ 0.10), `LOW` (<0.10). Used in Looker Studio station map and rebalancing dashboard |
+| `total_departures_all_time` | INT64 | **Calculated** — cumulative departures across the full dataset |
+| `total_arrivals_all_time` | INT64 | **Calculated** — cumulative arrivals across the full dataset |
+| `last_activity_date` | DATE | Most recent date with recorded activity at this station |
+
+#### `dim_date` — Date dimension (4,000 rows)
+Standard date spine from 2010 to 2030:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `date_id` | DATE | Primary key — calendar date |
+| `full_date` | DATE | Full date value |
+| `year` | INT64 | Calendar year |
+| `month` | INT64 | Month number (1–12) |
+| `day` | INT64 | Day of month |
+| `week_num` | INT64 | ISO week number |
+| `day_of_week` | INT64 | Day number (1=Sunday … 7=Saturday) |
+| `is_weekend` | BOOL | TRUE for Saturday and Sunday |
+| `season` | STRING | `spring`, `summer`, `autumn`, `winter` based on month |
 
 ## Contributing
 
