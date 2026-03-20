@@ -20,7 +20,6 @@ import sys
 import time
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -72,10 +71,14 @@ def build_features(rides_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
 
     # Season: 0=winter 1=spring 2=summer 3=autumn
     def get_season(m):
-        if m in (12, 1, 2):  return 0
-        elif m in (3, 4, 5): return 1
-        elif m in (6, 7, 8): return 2
-        else:                return 3
+        if m in (12, 1, 2):
+            return 0
+        elif m in (3, 4, 5):
+            return 1
+        elif m in (6, 7, 8):
+            return 2
+        else:
+            return 3
     df["season"] = df["month"].apply(get_season)
 
     # Aggregate to station-hour-day level
@@ -143,7 +146,7 @@ def train(source: str = "mock") -> None:
         try:
             from google.cloud import bigquery
             client = bigquery.Client(project=project)
-            query = f"""
+            query = """
                 SELECT
                     rental_id,
                     start_datetime   AS start_date,
@@ -163,7 +166,7 @@ def train(source: str = "mock") -> None:
             print(f"  Estimated scan : {est_gb:.3f} GB")
 
             if est_gb > 50.0:
-                print(f"  [WARN] Over 50 GB — check query before proceeding")
+                print("  [WARN] Over 50 GB — check query before proceeding")
                 sys.exit(1)
 
             print("  Executing query...")

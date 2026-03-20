@@ -167,17 +167,16 @@ class BQCostGuard:
 
     # ── Execute with tracking ─────────────────────────────────────
 
-    def run_query(self, sql: str, label: str = "query") -> "pd.DataFrame":
+    def run_query(self, sql: str, label: str = "query"):
         """
         Check budget, then execute the query and track usage.
         Returns a pandas DataFrame.
         """
-        import pandas as pd
         from google.cloud import bigquery
 
         estimated_bytes = self.check_query(sql, label)
 
-        print(f"  Executing...")
+        print("  Executing...")
         client = bigquery.Client(project=self.project_id)
         result = client.query(sql).to_dataframe()
 

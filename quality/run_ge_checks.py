@@ -67,9 +67,12 @@ class CheckRunner:
             status = FAIL
             passed = False
 
-        if status == PASS:   self.passed += 1
-        elif status == FAIL: self.failed += 1
-        else:                self.warned += 1
+        if status == PASS:
+            self.passed += 1
+        elif status == FAIL:
+            self.failed += 1
+        else:
+            self.warned += 1
 
         sym = "✓" if status == PASS else ("✗" if status == FAIL else "⚠")
         print(f"  [{status}] {sym} {description}")
@@ -280,12 +283,14 @@ def main():
     if args.checkpoint in ("post_ingest", "all"):
         passed, results = checkpoint_post_ingest(client)
         all_results.append({"checkpoint": "post_ingest", "checks": results})
-        if not passed: all_passed = False
+        if not passed:
+            all_passed = False
 
     if args.checkpoint in ("post_transform", "all"):
         passed, results = checkpoint_post_transform(client)
         all_results.append({"checkpoint": "post_transform", "checks": results})
-        if not passed: all_passed = False
+        if not passed:
+            all_passed = False
 
     save_results(all_results, all_passed)
 

@@ -98,16 +98,24 @@ def load_station_map_data(use_mock=True) -> pd.DataFrame:
 
     # ── Shared colour helpers ─────────────────────────────────────
     def score_to_rgb(score):
-        if score < 0.1:   return [34, 197, 94]
-        elif score < 0.3: return [234, 179, 8]
-        elif score < 0.5: return [249, 115, 22]
-        else:             return [239, 68, 68]
+        if score < 0.1:
+            return [34, 197, 94]
+        elif score < 0.3:
+            return [234, 179, 8]
+        elif score < 0.5:
+            return [249, 115, 22]
+        else:
+            return [239, 68, 68]
 
     def score_to_hex(score):
-        if score < 0.1:   return "#22C55E"
-        elif score < 0.3: return "#EAB308"
-        elif score < 0.5: return "#F97316"
-        else:             return "#EF4444"
+        if score < 0.1:
+            return "#22C55E"
+        elif score < 0.3:
+            return "#EAB308"
+        elif score < 0.5:
+            return "#F97316"
+        else:
+            return "#EF4444"
 
     df["colour"]     = df["imb_score"].apply(score_to_rgb)
     df["hex_colour"] = df["imb_score"].apply(score_to_hex)
