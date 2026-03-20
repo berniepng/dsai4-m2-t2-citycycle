@@ -1,36 +1,23 @@
 """
 orchestration/assets/ingestion_assets.py
-=========================================
+==========================================
 Dagster software-defined assets for the ingestion layer.
 
-Two modes:
-  mock_data_asset   — generates synthetic CSV data (no BQ cost)
-  meltano_ingest_asset — runs Meltano tap-bigquery → target-bigquery
+Mock mode (default):
+  mock_data_asset  — generates synthetic CSV data using mock_data_generator.py
+  mock_bq_load_asset — dry-run validates the CSV schema (no BQ cost)
 
-In dev/test, only mock_data_asset runs.
-In prod, meltano_ingest_asset runs (triggered by Dagster schedule).
+Production mode (future):
+  meltano_ingest_asset — runs Meltano tap-bigquery → target-bigquery
 """
 
-import os
 import subprocess
 import sys
 from pathlib import Path
 
-from dagster import (
-    AssetExecutionContext,
-    AssetIn,
-    Output,
-    asset,
-    get_dagster_logger,
-)
+from dagster import AssetExecutionContext, AssetIn, Output, asset, get_dagster_logger
 
 ROOT = Path(__file__).resolve().parents[2]
-
-# ══════════════════════════════════════════════════════════════════
-# ASSET 1: Mock data generation
-# Produces: data/mock/cycle_hire_mock.csv
-#           data/mock/cycle_stations_mock.csv
-# ══════════════════════════════════════════════════════════════════
 
 
 @asset(
@@ -64,8 +51,10 @@ def mock_data_asset(context: AssetExecutionContext) -> Output[dict]:
     stations_path = ROOT / "data" / "mock" / "cycle_stations_mock.csv"
     rides_path = ROOT / "data" / "mock" / "cycle_hire_mock.csv"
 
-    stations_rows = sum(1 for _ in open(stations_path)) - 1  # subtract header
+    stations_rows = sum(1 for _ in open(stations_path)) - 1
     rides_rows = sum(1 for _ in open(rides_path)) - 1
+
+    log.info(f"Generated {rides_rows} rides and {stations_rows} stations")
 
     return Output(
         value={
@@ -81,93 +70,73 @@ def mock_data_asset(context: AssetExecutionContext) -> Output[dict]:
     )
 
 
-# ══════════════════════════════════════════════════════════════════
-# ASSET 2: Mock CSV → BigQuery raw loader
-# Depends on: mock_data_asset
-# Produces: BQ raw.cycle_stations, BQ raw.cycle_hire
-# ══════════════════════════════════════════════════════════════════
-
-
 @asset(
     group_name="ingestion",
     ins={"mock_data": AssetIn("mock_data_asset")},
-    description="Load mock CSV files into BigQuery raw dataset.",
-    tags={"layer": "ingestion", "cost": "free"},
+    description="Validate mock CSV schema matches BigQuery raw table structure.",
+    tags={"layer": "ingestion", "cost": "zero"},
 )
 def mock_bq_load_asset(
     context: AssetExecutionContext,
     mock_data: dict,
 ) -> Output[dict]:
     log = get_dagster_logger()
+    log.info("Validating mock CSV schema (dry-run — no BQ cost)...")
 
-    project_id = os.getenv("GCP_PROJECT_ID")
-    if not project_id:
-        raise ValueError("GCP_PROJECT_ID environment variable not set")
+    import pandas as pd
 
-    log.info(f"Loading mock data to BigQuery project: {project_id}")
+    rides_path = ROOT / "data" / "mock" / "cycle_hire_mock.csv"
+    stations_path = ROOT / "data" / "mock" / "cycle_stations_mock.csv"
 
-    result = subprocess.run(
-        [
-            sys.executable,
-            str(ROOT / "ingestion" / "load_mock.py"),
-            "--mode=mock",
-            f"--project={project_id}",
-        ],
-        capture_output=True,
-        text=True,
-        cwd=str(ROOT),
-    )
+    rides = pd.read_csv(rides_path, nrows=5)
+    stations = pd.read_csv(stations_path, nrows=5)
 
-    if result.returncode != 0:
-        raise RuntimeError(f"BQ load failed:\n{result.stderr}")
+    expected_ride_cols = {
+        "rental_id",
+        "bike_id",
+        "duration",
+        "start_date",
+        "start_station_id",
+        "start_station_name",
+        "end_date",
+        "end_station_id",
+        "end_station_name",
+    }
+    expected_station_cols = {
+        "id",
+        "name",
+        "latitude",
+        "longitude",
+        "nbdocks",
+        "terminal_name",
+    }
 
-    log.info(result.stdout)
+    missing_ride = expected_ride_cols - set(rides.columns)
+    missing_station = expected_station_cols - set(stations.columns)
 
-    return Output(
-        value={"status": "loaded", "project": project_id},
-        metadata={
-            "project_id": project_id,
-            "dataset": "citycycle_raw",
-            "tables_loaded": ["cycle_stations", "cycle_hire"],
-            "source_rows": mock_data["rides_rows"],
-        },
-    )
-
-
-# ══════════════════════════════════════════════════════════════════
-# ASSET 3: Live Meltano ingest (production)
-# Runs tap-bigquery → target-bigquery via Meltano CLI
-# Only used when MODE=prod
-# ══════════════════════════════════════════════════════════════════
-
-
-@asset(
-    group_name="ingestion",
-    description="[PROD] Run Meltano tap-bigquery → target-bigquery ingest.",
-    tags={"layer": "ingestion", "env": "prod"},
-)
-def meltano_ingest_asset(context: AssetExecutionContext) -> Output[dict]:
-    log = get_dagster_logger()
-    meltano_dir = ROOT / "ingestion"
-
-    log.info("Running Meltano tap-bigquery → target-bigquery...")
-
-    result = subprocess.run(
-        ["meltano", "--environment=prod", "run", "tap-bigquery", "target-bigquery"],
-        capture_output=True,
-        text=True,
-        cwd=str(meltano_dir),
-    )
-
-    if result.returncode != 0:
+    if missing_ride:
+        raise RuntimeError(f"cycle_hire_mock.csv missing columns: {missing_ride}")
+    if missing_station:
         raise RuntimeError(
-            f"Meltano ingest failed (exit {result.returncode}):\n"
-            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+            f"cycle_stations_mock.csv missing columns: {missing_station}"
         )
 
-    log.info(result.stdout)
+    log.info(
+        f"Schema validation passed — "
+        f"{len(rides.columns)} ride cols, {len(stations.columns)} station cols"
+    )
 
     return Output(
-        value={"status": "ingested"},
-        metadata={"meltano_output": result.stdout[-2000:]},  # last 2000 chars
+        value={
+            "status": "validated",
+            "mode": "mock_dry_run",
+            "rides_rows": mock_data["rides_rows"],
+            "stations_rows": mock_data["stations_rows"],
+        },
+        metadata={
+            "mode": "mock_dry_run (no BQ API calls)",
+            "rides_columns": list(rides.columns),
+            "stations_columns": list(stations.columns),
+            "rides_rows": mock_data["rides_rows"],
+        },
     )

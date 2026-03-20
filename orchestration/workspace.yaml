@@ -1,31 +1,16 @@
 # orchestration/workspace.yaml
 # ==============================
-# Dagster workspace definition.
-# Tells Dagster where to find the pipeline code.
+# Dagster workspace — single entry point via Definitions object.
 #
 # Start the Dagster UI:
-#   dagster dev -f orchestration/workspace.yaml
+#   cd <repo-root>
+#   dagster dev -f orchestration/jobs/citycycle_pipeline_job.py
 #
-# Or with the full workspace:
-#   cd orchestration && dagster dev
+# Then open: http://localhost:3000
 
 load_from:
   - python_file:
-      relative_path: assets/ingestion_assets.py
-      working_directory: ..
+      relative_path: orchestration/jobs/citycycle_pipeline_job.py
+      working_directory: .
       executable_path: python
-
-  - python_file:
-      relative_path: assets/transform_assets.py
-      working_directory: ..
-      executable_path: python
-
-  - python_file:
-      relative_path: assets/quality_assets.py
-      working_directory: ..
-      executable_path: python
-
-  - python_file:
-      relative_path: jobs/citycycle_pipeline_job.py
-      working_directory: ..
-      executable_path: python
+      attribute: defs

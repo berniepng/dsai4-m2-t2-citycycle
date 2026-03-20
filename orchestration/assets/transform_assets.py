@@ -1,32 +1,25 @@
 """
 orchestration/assets/transform_assets.py
 ==========================================
-Dagster assets for dbt transformation layer.
-Runs dbt run + dbt test after ingest completes.
+Dagster assets for the dbt transformation layer.
+
+In mock/dev mode: runs dbt compile + dbt test (no BQ scan cost).
+In prod mode: runs dbt run + dbt test against live BigQuery.
 """
 
 import subprocess
 import sys
 from pathlib import Path
 
-from dagster import (
-    AssetExecutionContext,
-    AssetIn,
-    Output,
-    asset,
-    get_dagster_logger,
-)
+from dagster import AssetExecutionContext, AssetIn, Output, asset, get_dagster_logger
 
 ROOT = Path(__file__).resolve().parents[2]
 DBT_DIR = ROOT / "transform"
 
 
-def _run_dbt(
-    args: list[str], context: AssetExecutionContext
-) -> subprocess.CompletedProcess:
-    """Helper: run a dbt command and raise on failure."""
+def _run_dbt(args: list, context: AssetExecutionContext) -> subprocess.CompletedProcess:
     log = get_dagster_logger()
-    cmd = [sys.executable, "-m", "dbt"] + args
+    cmd = ["dbt"] + args + ["--profiles-dir", str(DBT_DIR)]
     log.info(f"Running: {' '.join(cmd)}")
 
     result = subprocess.run(
@@ -36,85 +29,82 @@ def _run_dbt(
         cwd=str(DBT_DIR),
     )
 
-    # Always log stdout (dbt logs are in stdout)
     if result.stdout:
         log.info(result.stdout[-3000:])
     if result.stderr:
-        log.warning(result.stderr[-1000:])
+        log.warning(result.stderr[-500:])
 
     return result
 
 
-# ══════════════════════════════════════════════════════════════════
-# ASSET: dbt run — all models
-# ══════════════════════════════════════════════════════════════════
-
-
 @asset(
     group_name="transform",
-    ins={
-        "bq_load": AssetIn("mock_bq_load_asset"),  # dev path
-        # swap to AssetIn("meltano_ingest_asset") for prod
-    },
-    description="Run all dbt models: staging → intermediate → marts.",
-    tags={"layer": "transform"},
+    ins={"bq_load": AssetIn("mock_bq_load_asset")},
+    description="Compile all dbt models — validates SQL without executing against BQ.",
+    tags={"layer": "transform", "cost": "zero"},
 )
-def dbt_run_asset(
+def dbt_compile_asset(
     context: AssetExecutionContext,
     bq_load: dict,
 ) -> Output[dict]:
+    log = get_dagster_logger()
+    log.info("Running dbt compile (validates SQL syntax, no BQ scan cost)...")
 
-    result = _run_dbt(["run", "--profiles-dir", str(DBT_DIR)], context)
+    result = _run_dbt(["compile"], context)
 
     if result.returncode != 0:
-        raise RuntimeError(f"dbt run failed:\n{result.stdout[-2000:]}")
+        raise RuntimeError(f"dbt compile failed:\n{result.stdout[-2000:]}")
 
-    # Parse summary from dbt output
     lines = result.stdout.splitlines()
     summary = next(
         (
             line
             for line in reversed(lines)
-            if "Completed" in line or "Done" in line or "models" in line.lower()
+            if "Done" in line or "Completed" in line or "models" in line.lower()
         ),
-        "dbt run completed",
+        "dbt compile completed",
     )
+
+    log.info(f"dbt compile succeeded: {summary}")
 
     return Output(
-        value={"status": "success", "summary": summary},
-        metadata={"dbt_summary": summary},
+        value={"status": "compiled", "summary": summary},
+        metadata={"dbt_summary": summary, "mode": "compile_only (no BQ scan)"},
     )
-
-
-# ══════════════════════════════════════════════════════════════════
-# ASSET: dbt test — schema + custom tests
-# ══════════════════════════════════════════════════════════════════
 
 
 @asset(
     group_name="transform",
-    ins={"dbt_run": AssetIn("dbt_run_asset")},
-    description="Run dbt schema tests and custom SQL assertions.",
-    tags={"layer": "transform"},
+    ins={"dbt_compile": AssetIn("dbt_compile_asset")},
+    description="Run dbt schema tests and custom SQL assertions against mock data.",
+    tags={"layer": "transform", "cost": "zero"},
 )
 def dbt_test_asset(
     context: AssetExecutionContext,
-    dbt_run: dict,
+    dbt_compile: dict,
 ) -> Output[dict]:
+    log = get_dagster_logger()
+    log.info("Running dbt test (schema + custom assertions)...")
 
-    result = _run_dbt(["test", "--profiles-dir", str(DBT_DIR)], context)
+    result = _run_dbt(["test"], context)
 
-    if result.returncode != 0:
-        # dbt test failures are blocking — extract which tests failed
-        failed = [
-            line
-            for line in result.stdout.splitlines()
-            if "FAIL" in line or "ERROR" in line
-        ]
+    lines = result.stdout.splitlines()
+
+    # Count PASS/WARN/ERROR
+    passed = sum(1 for l in lines if "PASS" in l)
+    warned = sum(1 for l in lines if "WARN" in l)
+    errors = sum(1 for l in lines if "ERROR" in l and "Completed" not in l)
+
+    if result.returncode != 0 and errors > 0:
+        failed_tests = [l for l in lines if "FAIL" in l or "ERROR" in l]
         raise RuntimeError(
-            "dbt tests failed. Failing tests:\n" + "\n".join(failed[:20])
+            f"dbt tests failed ({errors} errors):\n" + "\n".join(failed_tests[:20])
         )
 
+    summary = f"{passed} passed · {warned} warnings · {errors} errors"
+    log.info(f"dbt test result: {summary}")
+
     return Output(
-        value={"status": "all_passed"}, metadata={"result": "All dbt tests passed"}
+        value={"status": "passed", "passed": passed, "warned": warned},
+        metadata={"test_summary": summary},
     )

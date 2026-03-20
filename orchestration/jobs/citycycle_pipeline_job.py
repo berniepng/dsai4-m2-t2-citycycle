@@ -1,19 +1,30 @@
 """
 orchestration/jobs/citycycle_pipeline_job.py
 =============================================
-Defines the full CityCycle pipeline job.
+Dagster Definitions — entry point for the CityCycle pipeline.
 
 Asset execution order (enforced by dependency graph):
+
   mock_data_asset
     └── mock_bq_load_asset
-          ├── post_ingest_ge_asset          ← quality gate 1
-          └── dbt_run_asset
+          ├── post_ingest_ge_asset     ← quality gate 1
+          └── dbt_compile_asset
                 └── dbt_test_asset
                       └── post_transform_ge_asset  ← quality gate 2
 
-Schedule: daily at 02:00 UTC (after midnight London time).
-Retries: up to 3 retries with 5-minute delay between attempts.
+Dev job: runs full pipeline against mock data (zero BQ cost)
+Prod job: swap mock_bq_load_asset → meltano_ingest_asset for live BQ
+
+Schedule: daily at 02:00 UTC (production reference — stopped by default)
 """
+
+import sys
+from pathlib import Path
+
+# Ensure repo root is on path so orchestration.assets imports work
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from dagster import (
     AssetSelection,
@@ -25,58 +36,36 @@ from dagster import (
     load_assets_from_modules,
 )
 
-# Import all asset modules
-from orchestration.assets import (
-    ingestion_assets,
-    quality_assets,
-    transform_assets,
-)
+from orchestration.assets import ingestion_assets, quality_assets, transform_assets
 
 # ── Load all assets ───────────────────────────────────────────────
 all_assets = load_assets_from_modules(
     [ingestion_assets, transform_assets, quality_assets]
 )
 
-# ── Retry policy: up to 3 retries, 5 min between attempts ────────
-pipeline_retry_policy = RetryPolicy(
-    max_retries=3,
-    delay=300,  # 5 minutes in seconds
-)
+# ── Retry policy ─────────────────────────────────────────────────
+pipeline_retry_policy = RetryPolicy(max_retries=2, delay=60)
 
-# ── Full pipeline job (mock/dev path) ─────────────────────────────
+# ── Dev pipeline (mock data, zero BQ cost) ────────────────────────
 citycycle_dev_job = define_asset_job(
     name="citycycle_dev_pipeline",
-    selection=AssetSelection.groups("ingestion", "quality", "transform"),
-    description="Full CityCycle pipeline using mock data (no BQ scan cost)",
+    selection=AssetSelection.groups("ingestion", "transform", "quality"),
+    description="Full CityCycle pipeline using mock data — zero BigQuery cost",
     tags={"env": "dev"},
 )
 
-# ── Production job (uses meltano_ingest_asset instead of mock) ───
-citycycle_prod_job = define_asset_job(
-    name="citycycle_prod_pipeline",
-    selection=AssetSelection.assets(
-        "meltano_ingest_asset",
-        "post_ingest_ge_asset",
-        "dbt_run_asset",
-        "dbt_test_asset",
-        "post_transform_ge_asset",
-    ),
-    description="Full CityCycle pipeline using live BQ data via Meltano",
-    tags={"env": "prod"},
-)
-
-# ── Daily schedule: 02:00 UTC ─────────────────────────────────────
+# ── Daily schedule (production reference — stopped by default) ────
 daily_schedule = ScheduleDefinition(
     name="citycycle_daily_02utc",
-    job=citycycle_prod_job,
-    cron_schedule="0 2 * * *",  # 02:00 UTC daily
-    default_status=DefaultScheduleStatus.STOPPED,  # manually activate in prod
-    description="Daily CityCycle pipeline — runs at 02:00 UTC",
+    job=citycycle_dev_job,
+    cron_schedule="0 2 * * *",
+    default_status=DefaultScheduleStatus.STOPPED,
+    description="Daily CityCycle pipeline — 02:00 UTC (activate in prod)",
 )
 
-# ── Dagster Definitions object (entry point) ──────────────────────
+# ── Dagster Definitions (single entry point) ──────────────────────
 defs = Definitions(
     assets=all_assets,
-    jobs=[citycycle_dev_job, citycycle_prod_job],
+    jobs=[citycycle_dev_job],
     schedules=[daily_schedule],
 )
