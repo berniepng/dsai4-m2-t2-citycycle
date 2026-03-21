@@ -352,7 +352,7 @@ Dagster manages the data pipeline as software-defined assets with explicit depen
 
 **Asset dependency graph:**
 
-![Dagster Asset Graph](docs/diagrams/dagster_asset_graph.svg)
+![Dagster Run Success](docs/diagrams/dagster_run_success.png)
 
 **Pipeline execution order:**
 
