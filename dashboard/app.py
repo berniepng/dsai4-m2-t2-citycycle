@@ -29,7 +29,10 @@ st.set_page_config(
 
 # ── Sidebar ───────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("## 🚲")
+    st.image(
+        "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a8/Santander_Cycles_logo.svg/240px-Santander_Cycles_logo.svg.png",
+        width=160,
+    )
     st.markdown("## CityCycle London")
     st.markdown("**Bike Rebalancing Intelligence**")
     st.markdown("---")
@@ -54,7 +57,7 @@ with st.sidebar:
         st.warning("Live BigQuery mode")
 
     st.markdown("---")
-    st.caption("DSAI4 Module 2 · Team C")
+    st.caption("DSAI4 Module 2 · Team 2")
     st.caption("bigquery-public-data.london_bicycles")
 
 # ── Home page content ─────────────────────────────────────────────

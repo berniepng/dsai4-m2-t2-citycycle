@@ -457,6 +457,59 @@ dagster dev -f orchestration/jobs/citycycle_pipeline_job.py
 
 ---
 
+### Calculated Fields Summary
+
+Approximately half of all fields in the star schema are **engineered features** derived from raw source data — not simply loaded from BigQuery. The table below summarises every calculated field and its formula across all three layers.
+
+#### fact_rides
+
+| Field | Formula |
+|-------|---------|
+| `hire_date` | `DATE(start_datetime)` |
+| `start_hour` | `EXTRACT(HOUR FROM start_datetime)` |
+| `day_of_week` | `EXTRACT(DAYOFWEEK FROM start_datetime)` — 1=Sunday, 7=Saturday |
+| `is_weekend` | `day_of_week IN (1, 7)` |
+| `duration_minutes` | `duration_seconds / 60.0` |
+| `duration_band` | `short` <10 min · `medium` 10–30 · `long` 30–60 · `extended` >60 |
+| `peak_hour_flag` | `1` if start_hour IN (7, 8, 17, 18) else `0` |
+| `time_period` | `am_peak` (07–09) · `pm_peak` (17–19) · `midday` · `evening` · `night` |
+| `season` | `spring` (Mar–May) · `summer` (Jun–Aug) · `autumn` (Sep–Nov) · `winter` (Dec–Feb) |
+| `is_round_trip` | `TRUE` if start_station_id = end_station_id |
+| `ride_sk` | Surrogate key — `dbt_utils.generate_surrogate_key(['rental_id'])` |
+| `net_flow` | `total_departures - total_arrivals` per station per day (joined from `int_station_daily_stats`) |
+| `imbalance_score` | `ABS(departures - arrivals) / (departures + arrivals)` — range 0 to 1 |
+| `imbalance_direction` | `draining` (net_flow > 0) · `filling` (net_flow < 0) · `balanced` (net_flow = 0) |
+| `rebalancing_priority` | `CRITICAL` (≥0.25) · `HIGH` (≥0.18) · `MEDIUM` (≥0.10) · `LOW` (<0.10) |
+| `rolling_7d_avg` | 7-day rolling average of departures per station — used as ML feature |
+
+#### dim_stations
+
+| Field | Formula |
+|-------|---------|
+| `zone` | London area classification derived from lat/lon bounding boxes |
+| `capacity_tier` | `small` (≤15 docks) · `medium` (≤24 docks) · `large` (>24 docks) |
+| `avg_imbalance_score_7d` | All-time average imbalance score across full dataset |
+| `rebalancing_priority` | Same formula as fact_rides — based on all-time avg imbalance score |
+| `total_departures_all_time` | `COUNT(*)` of rides departing from station across full dataset |
+| `total_arrivals_all_time` | `COUNT(*)` of rides arriving at station across full dataset |
+| `station_sk` | Surrogate key — `dbt_utils.generate_surrogate_key(['station_id'])` |
+
+#### dim_date
+
+| Field | Formula |
+|-------|---------|
+| `year` | `EXTRACT(YEAR FROM full_date)` |
+| `month` | `EXTRACT(MONTH FROM full_date)` |
+| `day` | `EXTRACT(DAY FROM full_date)` |
+| `week_num` | `EXTRACT(WEEK FROM full_date)` |
+| `day_of_week` | `EXTRACT(DAYOFWEEK FROM full_date)` |
+| `is_weekend` | `day_of_week IN (1, 7)` |
+| `season` | Same CASE logic as fact_rides |
+
+> **Fields sourced directly from raw data (not calculated):** `rental_id`, `bike_id`, `start_datetime`, `end_datetime`, `start_station_id`, `end_station_id`, `station_name`, `latitude`, `longitude`, `nb_docks`, `is_installed`, `is_locked`, `zone`, `terminal_name`
+
+---
+
 ### Staging Layer (`citycycle_dev_staging`)
 
 #### `stg_cycle_hire` — Cleaned ride records
@@ -582,4 +635,4 @@ Standard date spine from 2010 to 2030:
 
 ---
 
-*Built for DSAI Module 2 Project — CityCycle Team C*
+*Built for DSAI Module 2 Project — CityCycle Team 2*
