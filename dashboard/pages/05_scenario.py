@@ -289,7 +289,9 @@ else:
             "MONITOR": "pause",
         }.get(row["action"], "info-sign")
 
-        dock_col = next((c for c in ["nb_docks", "nbdocks", "docks_count"] if c in row.index), None)
+        dock_col = next(
+            (c for c in ["nb_docks", "nbdocks", "docks_count"] if c in row.index), None
+        )
         nb_docks = int(row[dock_col]) if dock_col and not pd.isna(row[dock_col]) else 0
 
         popup_html = f"""
@@ -347,7 +349,7 @@ else:
     st.markdown(
         '<span style="color:#9a031e; font-size:14px;">●</span> CRITICAL (score ≥ 0.25) &nbsp;·&nbsp; '
         '<span style="color:#e36414; font-size:14px;">●</span> HIGH (score ≥ 0.18) &nbsp;·&nbsp; '
-        'Click any marker for full details',
+        "Click any marker for full details",
         unsafe_allow_html=True,
     )
 
