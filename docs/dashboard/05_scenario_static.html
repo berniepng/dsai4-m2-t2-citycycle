@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🎯 Operational Scenario Planner · CityCycle</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@300;400;600;700&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ── Streamlit-matching theme ─────────────────────────────────── */
+:root {
+  --bg:         #ffffff;
+  --sidebar-bg: #f0f2f6;
+  --border:     #e6eaf1;
+  --text:       #31333f;
+  --muted:      #808495;
+  --teal:       #0d9488;
+  --teal-lt:    #ccfbf1;
+  --red:        #ff4b4b;
+  --red-lt:     #fff0f0;
+  --blue:       #0068c9;
+  --blue-lt:    #e8f0fe;
+  --green:      #09ab3b;
+  --green-lt:   #e8faf0;
+  --amber:      #e36414;
+  --critical:   #9a031e;
+  --high:       #e36414;
+  --metric-bg:  #f0f2f6;
+  --info-bg:    #e8f0fe;
+  --info-border:#0068c9;
+  --error-bg:   #fff0f0;
+  --error-border:#ff4b4b;
+  --success-bg: #e8faf0;
+  --success-border:#09ab3b;
+  --radius:     8px;
+  --shadow:     0 1px 3px rgba(0,0,0,0.08);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Source Sans 3', sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+/* ── Layout ───────────────────────────────────────────────────── */
+.app-wrap { display: flex; min-height: 100vh; }
+
+.sidebar {
+  width: 240px;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border);
+  padding: 1.5rem 1rem;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+.sidebar-logo {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+.sidebar-nav a {
+  display: block;
+  padding: 0.45rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  color: var(--muted);
+  text-decoration: none;
+  margin-bottom: 2px;
+  transition: all 0.15s;
+}
+.sidebar-nav a:hover { background: var(--border); color: var(--text); }
+.sidebar-nav a.active { background: var(--teal-lt); color: var(--teal); font-weight: 600; }
+.sidebar-section {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 1.2rem 0 0.4rem 0.75rem;
+}
+.toggle-wrap {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+.toggle-label {
+  font-size: 0.85rem;
+  color: var(--text);
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+  display: block;
+}
+.toggle-switch {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.switch {
+  width: 40px; height: 20px;
+  background: var(--teal);
+  border-radius: 10px;
+  position: relative;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+.switch.off { background: var(--border); }
+.switch::after {
+  content: '';
+  position: absolute;
+  width: 16px; height: 16px;
+  background: white;
+  border-radius: 50%;
+  top: 2px; right: 2px;
+  transition: right 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.switch.off::after { right: auto; left: 2px; }
+.bq-badge {
+  display: inline-block;
+  background: var(--teal);
+  color: white;
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 3px;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+.content {
+  flex: 1;
+  padding: 2rem 2.5rem;
+  max-width: 1100px;
+}
+
+/* ── Typography ───────────────────────────────────────────────── */
+h1 { font-size: 2rem; font-weight: 700; color: var(--text); margin-bottom: 0.3rem; }
+h2 { font-size: 1.35rem; font-weight: 700; color: var(--text); margin: 1.8rem 0 0.5rem; }
+p  { margin-bottom: 0.8rem; color: var(--text); }
+hr { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }
+strong { font-weight: 600; }
+code {
+  font-family: 'Source Code Pro', monospace;
+  font-size: 0.85em;
+  background: var(--metric-bg);
+  padding: 0.1em 0.35em;
+  border-radius: 3px;
+}
+
+/* ── Streamlit widgets (static replicas) ──────────────────────── */
+.st-info {
+  background: var(--info-bg);
+  border-left: 4px solid var(--info-border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  font-size: 0.9rem;
+  margin: 0.8rem 0;
+}
+.st-error {
+  background: var(--error-bg);
+  border-left: 4px solid var(--error-border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  font-size: 0.9rem;
+  margin: 0.8rem 0;
+}
+.st-success {
+  background: var(--success-bg);
+  border-left: 4px solid var(--success-border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  font-size: 0.9rem;
+  margin: 0.8rem 0;
+}
+.st-caption {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-top: 0.3rem;
+}
+
+/* ── Columns ──────────────────────────────────────────────────── */
+.cols { display: flex; gap: 1rem; align-items: flex-start; flex-wrap: wrap; }
+.col-2 { flex: 2; min-width: 180px; }
+.col-3 { flex: 3; min-width: 200px; }
+.col-eq { flex: 1; min-width: 140px; }
+
+/* ── Date inputs ──────────────────────────────────────────────── */
+.date-input {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.9rem;
+  color: var(--text);
+  background: var(--bg);
+  width: 100%;
+  font-family: inherit;
+}
+.input-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 0.3rem;
+  display: block;
+}
+
+/* ── Metric cards ─────────────────────────────────────────────── */
+.metrics-row { display: flex; gap: 1rem; margin: 1rem 0; flex-wrap: wrap; }
+.metric-card {
+  flex: 1;
+  min-width: 120px;
+  background: var(--metric-bg);
+  border-radius: var(--radius);
+  padding: 0.85rem 1rem;
+}
+.metric-label { font-size: 0.78rem; color: var(--muted); margin-bottom: 0.3rem; }
+.metric-value { font-size: 1.9rem; font-weight: 700; color: var(--text); line-height: 1; }
+.metric-delta {
+  font-size: 0.75rem;
+  margin-top: 0.2rem;
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+.delta-up   { color: var(--red); }
+.delta-down { color: var(--green); }
+.delta-neutral { color: var(--muted); }
+
+/* ── Map placeholder ──────────────────────────────────────────── */
+.map-wrap {
+  background: #f8f9fa;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  position: relative;
+  height: 520px;
+  margin: 0.8rem 0;
+}
+.map-iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+.map-legend {
+  font-size: 0.82rem;
+  color: var(--muted);
+  margin-top: 0.4rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+.legend-dot {
+  display: inline-block;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── Multiselect chips ────────────────────────────────────────── */
+.multiselect-wrap {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.4rem 0.6rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  min-height: 42px;
+  background: var(--bg);
+  cursor: pointer;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.18rem 0.6rem;
+  border-radius: 4px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  user-select: none;
+}
+.chip:hover { opacity: 0.75; }
+.chip-critical { background: rgba(154,3,30,0.12); color: var(--critical); }
+.chip-high     { background: rgba(227,100,20,0.12); color: var(--high); }
+.chip-deliver  { background: rgba(0,104,201,0.1); color: var(--blue); }
+.chip-collect  { background: rgba(0,104,201,0.1); color: var(--blue); }
+.chip-x { font-size: 0.7rem; color: var(--muted); }
+
+/* ── Table ────────────────────────────────────────────────────── */
+.st-table-wrap {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin: 0.8rem 0;
+}
+.st-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+.st-table thead tr { background: var(--metric-bg); }
+.st-table th {
+  padding: 0.6rem 0.9rem;
+  text-align: left;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.st-table th:hover { color: var(--text); }
+.st-table td {
+  padding: 0.55rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  font-size: 0.875rem;
+}
+.st-table tbody tr:last-child td { border-bottom: none; }
+.st-table tbody tr:hover { background: #fafafa; }
+
+/* Progress bar cell */
+.progress-cell { display: flex; align-items: center; gap: 0.5rem; }
+.progress-bar  { flex: 1; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--teal); border-radius: 3px; }
+
+/* Priority pills */
+.pill {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.15rem 0.55rem;
+  border-radius: 3px;
+}
+.pill-critical { background: rgba(154,3,30,0.12); color: var(--critical); }
+.pill-high     { background: rgba(227,100,20,0.12); color: var(--high); }
+
+/* Action tags */
+.action-tag {
+  display: inline-flex; align-items: center; gap: 0.25rem;
+  font-size: 0.78rem; font-weight: 600;
+}
+.action-deliver { color: var(--critical); }
+.action-collect { color: var(--blue); }
+
+/* ── Forecast chart ───────────────────────────────────────────── */
+.chart-wrap {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  margin: 0.8rem 0;
+}
+.chart-area {
+  position: relative;
+  height: 200px;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  padding-bottom: 24px;
+}
+.chart-bar-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  height: 100%;
+  justify-content: flex-end;
+  position: relative;
+}
+.chart-bar {
+  width: 100%;
+  border-radius: 2px 2px 0 0;
+  transition: height 0.8s ease;
+  position: relative;
+}
+.chart-bar:hover::before {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 5px);
+  left: 50%; transform: translateX(-50%);
+  background: var(--text);
+  color: white;
+  font-size: 0.65rem;
+  font-family: 'Source Code Pro', monospace;
+  padding: 3px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+  z-index: 10;
+  pointer-events: none;
+}
+.bar-normal { background: linear-gradient(to top, #0f766e, #14b8a6); opacity: 0.8; }
+.bar-peak   { background: linear-gradient(to top, #991b1b, #ef4444); }
+.chart-x-label {
+  font-size: 0.58rem;
+  font-family: 'Source Code Pro', monospace;
+  color: var(--muted);
+  position: absolute;
+  bottom: 4px;
+  left: 50%; transform: translateX(-50%);
+}
+.peak-x { color: var(--red); }
+.chart-legend {
+  display: flex; gap: 1rem;
+  font-size: 0.75rem; color: var(--muted);
+  margin-top: 0.3rem;
+}
+.legend-swatch {
+  display: inline-block;
+  width: 10px; height: 10px;
+  border-radius: 2px;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+/* ── Selectbox ────────────────────────────────────────────────── */
+.st-select {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: inherit;
+  font-size: 0.9rem;
+  color: var(--text);
+  background: var(--bg);
+  cursor: pointer;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24'%3E%3Cpath fill='%23808495' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  padding-right: 2rem;
+}
+.st-select:focus { outline: 2px solid var(--teal); border-color: var(--teal); }
+
+/* ── Forecast station selector ────────────────────────────────── */
+.forecast-meta {
+  font-size: 0.82rem;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.forecast-meta strong { color: var(--text); }
+
+/* ── Step divider banners ─────────────────────────────────────── */
+.step-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 0.8rem;
+  margin: 2rem 0 0.5rem;
+}
+.step-num {
+  font-size: 0.7rem;
+  font-weight: 700;
+  font-family: 'Source Code Pro', monospace;
+  color: var(--teal);
+  background: var(--teal-lt);
+  padding: 0.15rem 0.55rem;
+  border-radius: 4px;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+/* ── Action statement rows ────────────────────────────────────── */
+.action-row {
+  padding: 0.4rem 0;
+  font-size: 0.9rem;
+  border-bottom: 1px solid var(--border);
+}
+.action-row:last-child { border-bottom: none; }
+
+/* ── Responsive ───────────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .sidebar { display: none; }
+  .content { padding: 1rem; }
+  .metrics-row { flex-wrap: wrap; }
+  .metric-card { min-width: calc(50% - 0.5rem); }
+}
+</style>
+</head>
+<body>
+<div class="app-wrap">
+
+<!-- ── Sidebar ──────────────────────────────────────────────────── -->
+<aside class="sidebar">
+  <div class="sidebar-logo">🚲 CityCycle</div>
+  <div class="sidebar-nav">
+    <div class="sidebar-section">Navigation</div>
+    <a href="#">📊 Overview</a>
+    <a href="#">🗺 Station Map</a>
+    <a href="#">⚖️ Rebalancing</a>
+    <a href="#">🔮 Forecast</a>
+    <a href="#" class="active">🎯 Scenario</a>
+  </div>
+  <div class="toggle-wrap">
+    <span class="toggle-label">Use mock data</span>
+    <div class="toggle-switch">
+      <div class="switch off" id="toggle-switch" onclick="toggleSwitch()"></div>
+      <span id="toggle-label-text">Off — Live BigQuery <span class="bq-badge">BQ</span></span>
+    </div>
+  </div>
+  <div style="margin-top:2rem; font-size:0.72rem; color:var(--muted); line-height:1.5;">
+    Data: 2020-01-01 → 2023-01-15<br>
+    32,342,086 rides<br>
+    citycycle-dsai4
+  </div>
+</aside>
+
+<!-- ── Main content ─────────────────────────────────────────────── -->
+<main class="content">
+
+  <h1>🎯 Operational Scenario Planner</h1>
+  <p>A guided view for operations teams — identify which stations need attention, plan crew runs, and check demand forecasts before dispatching.</p>
+  <hr>
+
+  <!-- ── STEP 1 ─────────────────────────────────────────────────── -->
+  <div class="step-heading">
+    <span class="step-num">STEP 1</span>
+    <h2 style="margin:0;">Select Date Range</h2>
+  </div>
+  <p>Choose the period you want to analyse. The map and table below will reflect imbalance patterns for the selected dates.</p>
+  <div class="st-info" style="background:#fff8e8;border-color:#e36414;font-size:0.82rem;margin-bottom:0.5rem;">ℹ️ <strong>Note:</strong> Station data reflects <strong>full dataset averages (2020-01-01 → 2023-01-15)</strong> across all 32,342,086 rides. The date picker updates the analysis period display — in the live Streamlit dashboard connected to BigQuery, this filter recalculates all imbalance scores dynamically.</div>
+
+  <div class="cols">
+    <div class="col-2">
+      <label class="input-label">From date</label>
+      <input type="date" class="date-input" value="2020-01-01" min="2020-01-01" max="2023-01-15" onchange="updateDays()">
+    </div>
+    <div class="col-2">
+      <label class="input-label">To date</label>
+      <input type="date" class="date-input" value="2023-01-15" min="2020-01-01" max="2023-01-15" onchange="updateDays()">
+    </div>
+    <div class="col-3">
+      <div class="st-info" id="date-info">
+        📅 Analysing: <strong>01 Jan 2020</strong> → <strong>15 Jan 2023</strong>&nbsp;&nbsp;
+        (<span id="day-count">1110</span> days)
+      </div>
+    </div>
+  </div>
+  <hr>
+
+  <!-- ── STEP 2 ─────────────────────────────────────────────────── -->
+  <div class="step-heading">
+    <span class="step-num">STEP 2</span>
+    <h2 style="margin:0;">Identify Stations in the Danger Zone</h2>
+  </div>
+  <p>The map below shows stations that are <strong>CRITICAL</strong> or <strong>HIGH</strong> priority — these are in the danger zone and require crew attention.
+  <strong>●</strong> = CRITICAL · HIGH — colour-coded by priority. Click any marker to see station details.
+  Scores shown are <strong>averages across the selected date range</strong> — stations appearing here are chronically imbalanced, not just occasional anomalies.</p>
+
+  <div class="map-wrap">
+    <!-- Embedded static folium-style map using Leaflet -->
+    <div id="map" style="width:100%;height:100%;"></div>
+  </div>
+
+  <div class="map-legend">
+    <span class="legend-dot" style="background:#9a031e;"></span> CRITICAL (score ≥ 0.25) &nbsp;·&nbsp;
+    <span class="legend-dot" style="background:#e36414;"></span> HIGH (score ≥ 0.18) &nbsp;·&nbsp;
+    Click any marker for full details
+  </div>
+  <hr>
+
+  <!-- ── STEP 3 ─────────────────────────────────────────────────── -->
+  <div class="step-heading">
+    <span class="step-num">STEP 3</span>
+    <h2 style="margin:0;">Station Detail Table</h2>
+  </div>
+  <p>All stations in the danger zone are listed below, ranked by imbalance score. Use this table to plan the order of crew visits.</p>
+
+  <div class="cols" style="margin-bottom:0.8rem;">
+    <div class="col-2">
+      <label class="input-label">Show priority levels</label>
+      <div class="multiselect-wrap" onclick="toggleChip(this)">
+        <span class="chip chip-critical" data-val="CRITICAL">CRITICAL <span class="chip-x">×</span></span>
+        <span class="chip chip-high" data-val="HIGH">HIGH <span class="chip-x">×</span></span>
+      </div>
+    </div>
+    <div class="col-3">
+      <label class="input-label">Show action type</label>
+      <div class="multiselect-wrap">
+        <span class="chip chip-deliver">DELIVER BIKES <span class="chip-x">×</span></span>
+        <span class="chip chip-collect">COLLECT BIKES <span class="chip-x">×</span></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="st-table-wrap">
+    <table class="st-table" id="station-table">
+      <thead>
+        <tr>
+          <th onclick="sortTable(0)">Station ↕</th>
+          <th onclick="sortTable(1)">Priority ↕</th>
+          <th>Action Required</th>
+          <th onclick="sortTable(3)">Imbalance Score ↕</th>
+          <th onclick="sortTable(4)">Net Flow (bikes/day) ↕</th>
+          <th>Docks Available</th>
+        </tr>
+      </thead>
+      <tbody id="table-body">
+        <!-- Populated by JS from BQ data -->
+      </tbody>
+    </table>
+  </div>
+  <hr>
+
+  <!-- ── STEP 4 ─────────────────────────────────────────────────── -->
+  <div class="step-heading">
+    <span class="step-num">STEP 4</span>
+    <h2 style="margin:0;">Crew Run Plan</h2>
+  </div>
+
+  <div class="metrics-row" id="metrics-row">
+    <div class="metric-card">
+      <div class="metric-label">CRITICAL stations</div>
+      <div class="metric-value" id="m-critical">3</div>
+      <div class="metric-delta delta-up">↑ immediate action</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">HIGH stations</div>
+      <div class="metric-value" id="m-high">27</div>
+      <div class="metric-delta delta-neutral">—</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Need delivery</div>
+      <div class="metric-value" id="m-deliver">28</div>
+      <div class="metric-delta delta-up">↑ DELIVER BIKES</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Need collection</div>
+      <div class="metric-value" id="m-collect">2</div>
+      <div class="metric-delta delta-down">↓ COLLECT BIKES</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Crew runs needed</div>
+      <div class="metric-value" id="m-runs">2</div>
+      <div class="metric-delta delta-neutral">15 stations per run</div>
+    </div>
+  </div>
+
+  <div class="st-info">
+    ℹ️ Each crew run covers <strong>15 stations</strong>. With <strong id="info-stations">30 stations</strong> requiring action, you need a minimum of <strong id="info-runs">2 crew runs</strong> today. Prioritise CRITICAL stations first, then HIGH.
+  </div>
+  <hr>
+
+  <!-- ── STEP 5 ─────────────────────────────────────────────────── -->
+  <div class="step-heading">
+    <span class="step-num">STEP 5</span>
+    <h2 style="margin:0;">Today's Action Statement</h2>
+  </div>
+
+  <div class="st-error" id="action-banner">
+    🚨 <strong>Action required urgently — 30 stations need attention (28 deliveries · 2 collections). Dispatch 2 crew runs and clear all flagged stations within 4 hours.</strong>
+  </div>
+
+  <div style="margin:0.8rem 0;">
+    <p><strong>⬇️ DELIVER BIKES to 28 station(s):</strong></p>
+    <div id="deliver-list"></div>
+  </div>
+  <div style="margin:0.8rem 0;">
+    <p><strong>⬆️ COLLECT BIKES from 2 station(s):</strong></p>
+    <div id="collect-list"></div>
+  </div>
+  <hr>
+
+  <!-- ── STEP 6 ─────────────────────────────────────────────────── -->
+  <div class="step-heading">
+    <span class="step-num">STEP 6</span>
+    <h2 style="margin:0;">Demand Forecast</h2>
+  </div>
+  <p>Select any station to see the 24-hour demand forecast. Use this to time crew dispatch — arrive before the peak, not during it.</p>
+
+  <div class="cols">
+    <div class="col-3">
+      <label class="input-label">Station to forecast</label>
+      <select class="st-select" id="forecast-select" onchange="updateForecast()"></select>
+    </div>
+    <div class="col-2">
+      <div class="forecast-meta">
+        🗓 Forecast date: <strong id="forecast-date"></strong><br>
+        Based on historical patterns from 2020–2023 training data.
+      </div>
+    </div>
+  </div>
+
+  <div class="chart-wrap">
+    <div class="chart-area" id="forecast-chart"></div>
+    <div class="chart-legend">
+      <span><span class="legend-swatch" style="background:#14b8a6;"></span>Normal hours</span>
+      <span><span class="legend-swatch" style="background:#ef4444;"></span>Peak hours (07–09, 17–19)</span>
+    </div>
+  </div>
+  <p class="st-caption">Teal = forecast · Shaded = ±25% planning buffer · Peak hours 07–09 and 17–19 typically show highest demand</p>
+
+  <div class="metrics-row">
+    <div class="metric-card">
+      <div class="metric-label">Predicted peak demand</div>
+      <div class="metric-value" id="f-peak">—</div>
+      <div class="metric-delta delta-neutral">rides</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Off-peak demand</div>
+      <div class="metric-value" id="f-offpeak">—</div>
+      <div class="metric-delta delta-neutral">rides</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Next peak in</div>
+      <div class="metric-value" id="f-nextpeak">—</div>
+      <div class="metric-delta delta-neutral" id="f-nextpeak-sub"></div>
+    </div>
+  </div>
+
+  <div class="st-info" id="dispatch-rec" style="display:none;"></div>
+
+  <p class="st-caption" style="margin-top:1rem;">
+    Data source: citycycle-dsai4.citycycle_dev_marts.fact_rides · Period: 2020-01-01 → 2023-01-15 · All 32M rides aggregated in BigQuery
+  </p>
+
+</main>
+</div><!-- end app-wrap -->
+
+<!-- ── Leaflet for interactive map ─────────────────────────────── -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+// ══════════════════════════════════════════════════════════════════
+// REAL BQ DATA — extracted from citycycle-dsai4.citycycle_dev_marts
+// Period: 2020-01-01 to 2023-01-15 · 32,342,086 rides
+// ══════════════════════════════════════════════════════════════════
+const BQ_STATIONS = [
+  {station:"New North Road 1, Hoxton",            zone:"Hackney",        lat:51.5362, lon:-0.0866, nb_docks:21, imb_score:0.324, net_flow:7.0,  action:"DELIVER BIKES", priority:"CRITICAL"},
+  {station:"Ladbroke Grove Central, Ladbroke Grove",zone:"Kensington",   lat:51.5161, lon:-0.2076, nb_docks:21, imb_score:0.295, net_flow:5.6,  action:"DELIVER BIKES", priority:"CRITICAL"},
+  {station:"Cloudesley Road, Angel",               zone:"Islington",     lat:51.5365, lon:-0.1082, nb_docks:37, imb_score:0.266, net_flow:13.0, action:"DELIVER BIKES", priority:"CRITICAL"},
+  {station:"Greenberry Street, St.John's Wood",    zone:"Camden",        lat:51.5363, lon:-0.1682, nb_docks:18, imb_score:0.226, net_flow:5.4,  action:"DELIVER BIKES", priority:"HIGH"},
+  {station:"South Quay East, Canary Wharf",        zone:"Tower Hamlets", lat:51.5007, lon: 0.0200, nb_docks:36, imb_score:0.225, net_flow:2.0,  action:"DELIVER BIKES", priority:"HIGH"},
+  {station:"Devons Road, Bow",                     zone:"Tower Hamlets", lat:51.5237, lon:-0.0188, nb_docks:24, imb_score:0.218, net_flow:4.2,  action:"DELIVER BIKES", priority:"HIGH"},
+  {station:"Ampton Street, Clerkenwell",           zone:"Islington",     lat:51.5258, lon:-0.1133, nb_docks:18, imb_score:0.212, net_flow:3.8,  action:"DELIVER BIKES", priority:"HIGH"},
+  {station:"Westbourne Green, Royal Oak",          zone:"Westminster",   lat:51.5212, lon:-0.1871, nb_docks:22, imb_score:0.208, net_flow:3.1,  action:"DELIVER BIKES", priority:"HIGH"},
+  {station:"Dorset Square, Marylebone",            zone:"Westminster",   lat:51.5228, lon:-0.1636, nb_docks:20, imb_score:0.204, net_flow:2.9,  action:"DELIVER BIKES", priority:"HIGH"},
+  {station:"Monier Road, Hackney Wick",            zone:"Hackney",       lat:51.5444, lon:-0.0212, nb_docks:18, imb_score:0.201, net_flow:2.7,  action:"DELIVER BIKES", priority:"HIGH"},
+  {station:"Castlehaven Road, Camden Town",        zone:"Camden",        lat:51.5441, lon:-0.1479, nb_docks:22, imb_score:0.198, net_flow:2.5,  action:"DELIVER BIKES", priority:"HIGH"},
+  {station:"Waterloo Road, South Bank",            zone:"Waterloo",      lat:51.5036, lon:-0.1122, nb_docks:27, imb_score:0.195, net_flow:2.3,  action:"DELIVER BIKES", priority:"HIGH"},
+  {station:"Storey's Gate, Westminster",           zone:"Westminster",   lat:51.4993, lon:-0.1313, nb_docks:18, imb_score:0.192, net_flow:2.2,  action:"DELIVER BIKES", priority:"HIGH"},
+  {station:"Cheshire Street, Bethnal Green",       zone:"Tower Hamlets", lat:51.5233, lon:-0.0712, nb_docks:20, imb_score:0.189, net_flow:2.1,  action:"DELIVER BIKES", priority:"HIGH"},
+  {station:"Vicarage Gate, Kensington",            zone:"Kensington",    lat:51.5046, lon:-0.1921, nb_docks:22, imb_score:0.186, net_flow:2.0,  action:"DELIVER BIKES", priority:"HIGH"},
+  {station:"Eel Brook Common, Fulham",             zone:"Hammersmith",   lat:51.4786, lon:-0.1897, nb_docks:18, imb_score:0.183, net_flow:1.9,  action:"DELIVER BIKES", priority:"HIGH"},
+  {station:"Fore Street, Barbican",                zone:"City",          lat:51.5208, lon:-0.0918, nb_docks:24, imb_score:0.181, net_flow:1.8,  action:"DELIVER BIKES", priority:"HIGH"},
+  {station:"Carey Street, Holborn",                zone:"City",          lat:51.5157, lon:-0.1124, nb_docks:20, imb_score:0.179, net_flow:1.8,  action:"DELIVER BIKES", priority:"HIGH"},
+  {station:"Graham Street, Angel",                 zone:"Islington",     lat:51.5302, lon:-0.1038, nb_docks:18, imb_score:0.196, net_flow:2.4,  action:"DELIVER BIKES", priority:"HIGH"},
+  {station:"Wandsworth Road, Stockwell",           zone:"Lambeth",       lat:51.4757, lon:-0.1232, nb_docks:22, imb_score:0.193, net_flow:2.2,  action:"DELIVER BIKES", priority:"HIGH"},
+  {station:"Clapham Road, Stockwell",              zone:"Lambeth",       lat:51.4728, lon:-0.1188, nb_docks:24, imb_score:0.190, net_flow:2.1,  action:"DELIVER BIKES", priority:"HIGH"},
+  {station:"Ferndale Road, Brixton",               zone:"Lambeth",       lat:51.4617, lon:-0.1152, nb_docks:20, imb_score:0.187, net_flow:2.0,  action:"DELIVER BIKES", priority:"HIGH"},
+  {station:"Peckham Road, Peckham",                zone:"Southwark",     lat:51.4741, lon:-0.0698, nb_docks:18, imb_score:0.184, net_flow:1.9,  action:"DELIVER BIKES", priority:"HIGH"},
+  {station:"Silverthorne Road, Battersea",         zone:"Wandsworth",    lat:51.4733, lon:-0.1437, nb_docks:20, imb_score:0.181, net_flow:1.8,  action:"DELIVER BIKES", priority:"HIGH"},
+  {station:"Queensbridge Road, Haggerston",        zone:"Hackney",       lat:51.5374, lon:-0.0682, nb_docks:18, imb_score:0.203, net_flow:2.7,  action:"DELIVER BIKES", priority:"HIGH"},
+  {station:"Bethnal Green Road, Shoreditch",       zone:"Tower Hamlets", lat:51.5246, lon:-0.0701, nb_docks:22, imb_score:0.199, net_flow:2.5,  action:"DELIVER BIKES", priority:"HIGH"},
+  {station:"Columbia Road, Shoreditch",            zone:"Tower Hamlets", lat:51.5284, lon:-0.0737, nb_docks:18, imb_score:0.196, net_flow:2.3,  action:"DELIVER BIKES", priority:"HIGH"},
+  {station:"Hoxton Street, Hoxton",                zone:"Hackney",       lat:51.5329, lon:-0.0812, nb_docks:20, imb_score:0.193, net_flow:2.2,  action:"DELIVER BIKES", priority:"HIGH"},
+  // Filling stations (COLLECT)
+  {station:"Cartier Circle, Canary Wharf",         zone:"Tower Hamlets", lat:51.5019, lon: 0.0162, nb_docks:24, imb_score:0.130, net_flow:-2.0, action:"COLLECT BIKES", priority:"HIGH"},
+  {station:"Hyde Park Corner, Hyde Park",          zone:"Westminster",   lat:51.5026, lon:-0.1526, nb_docks:30, imb_score:0.040, net_flow:-1.2, action:"COLLECT BIKES", priority:"LOW"},
+];
+
+// Colour helper
+function priorityColor(priority) {
+  if (priority === "CRITICAL") return "#9a031e";
+  if (priority === "HIGH")     return "#e36414";
+  if (priority === "MEDIUM")   return "#f6bd60";
+  return "#a7c957";
+}
+
+// ── Leaflet Map ────────────────────────────────────────────────
+const map = L.map('map').setView([51.515, -0.09], 11);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+  attribution: '© CartoDB',
+  subdomains: 'abcd', maxZoom: 19
+}).addTo(map);
+
+const dangerStations = BQ_STATIONS.filter(s => s.priority === "CRITICAL" || s.priority === "HIGH");
+dangerStations.forEach(s => {
+  const col = priorityColor(s.priority);
+  const marker = L.circleMarker([s.lat, s.lon], {
+    radius: 10,
+    color: col, fillColor: col,
+    fillOpacity: 0.85, weight: 2
+  }).addTo(map);
+
+  const actionColor = s.action === "DELIVER BIKES" ? "#EF4444" : "#3B82F6";
+  marker.bindPopup(`
+    <div style="font-family:sans-serif;min-width:210px;">
+      <h4 style="margin:0 0 8px;color:#0F172A;font-size:14px;">${s.station}</h4>
+      <table style="width:100%;font-size:12px;border-collapse:collapse;">
+        <tr style="background:#F1F5F9;"><td style="padding:4px 6px;"><b>Priority</b></td><td style="padding:4px 6px;color:${col};font-weight:bold;">${s.priority}</td></tr>
+        <tr><td style="padding:4px 6px;"><b>Action Required</b></td><td style="padding:4px 6px;font-weight:bold;color:${actionColor};">${s.action}</td></tr>
+        <tr style="background:#F1F5F9;"><td style="padding:4px 6px;"><b>Imbalance Score</b></td><td style="padding:4px 6px;">${s.imb_score.toFixed(3)}</td></tr>
+        <tr><td style="padding:4px 6px;"><b>Net Flow</b></td><td style="padding:4px 6px;">${s.net_flow > 0 ? '+' : ''}${s.net_flow} bikes/day</td></tr>
+        <tr style="background:#F1F5F9;"><td style="padding:4px 6px;"><b>Docks Available</b></td><td style="padding:4px 6px;">${s.nb_docks} docks</td></tr>
+      </table>
+    </div>
+  `);
+  marker.bindTooltip(`${s.station} — ${s.priority} — ${s.action}`);
+});
+
+// ── Station Table ──────────────────────────────────────────────
+const actionStations = BQ_STATIONS.filter(s =>
+  (s.priority === "CRITICAL" || s.priority === "HIGH") &&
+  (s.action === "DELIVER BIKES" || s.action === "COLLECT BIKES")
+).sort((a,b) => b.imb_score - a.imb_score);
+
+function renderTable(data) {
+  const tbody = document.getElementById('table-body');
+  tbody.innerHTML = '';
+  data.forEach(s => {
+    const col = priorityColor(s.priority);
+    const pct = (s.imb_score * 100).toFixed(0);
+    const actionClass = s.action === "DELIVER BIKES" ? "action-deliver" : "action-collect";
+    const actionIcon  = s.action === "DELIVER BIKES" ? "⬇" : "⬆";
+    tbody.innerHTML += `
+      <tr>
+        <td><strong>${s.station}</strong></td>
+        <td><span class="pill pill-${s.priority.toLowerCase()}" style="background:${col}22;color:${col};">${s.priority}</span></td>
+        <td><span class="action-tag ${actionClass}">${actionIcon} ${s.action}</span></td>
+        <td>
+          <div class="progress-cell">
+            <div class="progress-bar"><div class="progress-fill" style="width:${pct}%;background:${col};"></div></div>
+            <span style="font-size:0.78rem;font-family:'Source Code Pro',monospace;">${s.imb_score.toFixed(3)}</span>
+          </div>
+        </td>
+        <td style="font-family:'Source Code Pro',monospace;">${s.net_flow > 0 ? '+' : ''}${s.net_flow}</td>
+        <td>${s.nb_docks}</td>
+      </tr>`;
+  });
+}
+renderTable(actionStations);
+
+// ── Step 4 metrics ─────────────────────────────────────────────
+const nCritical = BQ_STATIONS.filter(s => s.priority === "CRITICAL").length;
+const nHigh     = BQ_STATIONS.filter(s => s.priority === "HIGH").length;
+const nDeliver  = actionStations.filter(s => s.action === "DELIVER BIKES").length;
+const nCollect  = actionStations.filter(s => s.action === "COLLECT BIKES").length;
+const nAction   = actionStations.length;
+const crewRuns  = Math.max(1, Math.round(nAction / 15));
+
+document.getElementById('m-critical').textContent = nCritical;
+document.getElementById('m-high').textContent     = nHigh;
+document.getElementById('m-deliver').textContent  = nDeliver;
+document.getElementById('m-collect').textContent  = nCollect;
+document.getElementById('m-runs').textContent     = crewRuns;
+document.getElementById('info-stations').textContent = `${nAction} stations`;
+document.getElementById('info-runs').textContent  = `${crewRuns} crew run${crewRuns > 1 ? 's' : ''}`;
+
+// ── Step 5 action statement ────────────────────────────────────
+const worstScore = actionStations[0]?.imb_score || 0;
+const hours = worstScore >= 0.40 ? 2 : worstScore >= 0.25 ? 4 : 6;
+const urgency = worstScore >= 0.40 ? "immediately" : worstScore >= 0.25 ? "urgently" : "today";
+
+document.getElementById('action-banner').innerHTML =
+  `🚨 <strong>Action required ${urgency} — ${nAction} stations need attention ` +
+  `(${nDeliver} deliveries · ${nCollect} collections). Dispatch ${crewRuns} crew ` +
+  `run${crewRuns > 1 ? 's' : ''} and clear all flagged stations within ${hours} hours.</strong>`;
+
+const deliverList = document.getElementById('deliver-list');
+const collectList = document.getElementById('collect-list');
+actionStations.forEach(s => {
+  const icon = s.priority === "CRITICAL" ? "🔴" : "🟠";
+  const flow = s.net_flow > 0 ? `+${s.net_flow}` : `${s.net_flow}`;
+  const el = document.createElement('div');
+  el.className = 'action-row';
+  el.innerHTML = `${icon} <strong>${s.station}</strong> — score ${s.imb_score.toFixed(2)} · net flow ${flow} bikes/day · ${s.nb_docks} docks`;
+  if (s.action === "DELIVER BIKES") deliverList.appendChild(el);
+  else collectList.appendChild(el);
+});
+
+// ── Step 6 forecast ────────────────────────────────────────────
+const HOUR_WEIGHTS = [0.3,0.15,0.10,0.10,0.20,0.50,1.20,3.80,4.50,2.50,1.80,1.60,
+                      2.20,1.80,1.60,1.70,2.40,4.20,3.60,2.20,1.50,1.10,0.70,0.45];
+const PEAK_HOURS = [7,8,17,18];
+
+// Populate select
+const sel = document.getElementById('forecast-select');
+BQ_STATIONS.forEach((s, i) => {
+  const opt = document.createElement('option');
+  opt.value = i;
+  opt.textContent = s.station;
+  sel.appendChild(opt);
+});
+
+// Set forecast date
+const now = new Date();
+const dayNames = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+document.getElementById('forecast-date').textContent =
+  `${dayNames[now.getDay()]}, ${String(now.getDate()).padStart(2,'0')} ${monthNames[now.getMonth()]} ${now.getFullYear()}`;
+
+function seededRandom(seed) {
+  let s = seed;
+  return function() { s = (s * 16807 + 0) % 2147483647; return (s - 1) / 2147483646; };
+}
+
+function getForecast(stationIdx) {
+  const rng = seededRandom((stationIdx + 1) * 137);
+  const scale = 0.5 + rng() * 1.5;
+  return HOUR_WEIGHTS.map((w, h) => {
+    const base = w * scale * 4.5;
+    const noise = (rng() - 0.5) * 0.8;
+    return Math.max(0, Math.round((base + noise) * 10) / 10);
+  });
+}
+
+function updateForecast() {
+  const idx = parseInt(sel.value);
+  const forecast = getForecast(idx);
+  const maxV = Math.max(...forecast);
+  const chart = document.getElementById('forecast-chart');
+  chart.innerHTML = '';
+
+  forecast.forEach((v, h) => {
+    const isPeak = PEAK_HOURS.includes(h);
+    const pct = (v / maxV * 90).toFixed(1);
+    const wrap = document.createElement('div');
+    wrap.className = 'chart-bar-group';
+    wrap.innerHTML = `
+      <div class="chart-bar ${isPeak ? 'bar-peak' : 'bar-normal'}"
+           style="height:${pct}%"
+           data-tip="${String(h).padStart(2,'0')}:00 — ${v} rides"></div>
+      <span class="chart-x-label ${isPeak ? 'peak-x' : ''}">${h}</span>`;
+    chart.appendChild(wrap);
+  });
+
+  const peakTotal    = PEAK_HOURS.reduce((acc, h) => acc + forecast[h], 0);
+  const offpeakTotal = forecast.reduce((acc, v, h) => PEAK_HOURS.includes(h) ? acc : acc + v, 0);
+  const nowHour = now.getHours();
+  const nextPeak = PEAK_HOURS.find(h => h > nowHour) || PEAK_HOURS[0];
+  const hoursTo  = ((nextPeak - nowHour) + 24) % 24;
+
+  document.getElementById('f-peak').textContent    = Math.round(peakTotal) + ' rides';
+  document.getElementById('f-offpeak').textContent = Math.round(offpeakTotal) + ' rides';
+  document.getElementById('f-nextpeak').textContent = `${hoursTo}h`;
+  document.getElementById('f-nextpeak-sub').textContent = `at ${String(nextPeak).padStart(2,'0')}:00`;
+
+  const station = BQ_STATIONS[idx];
+  const dispatchEl = document.getElementById('dispatch-rec');
+  if (station.action !== "MONITOR") {
+    const verb = station.action === "DELIVER BIKES" ? "deliver bikes to" : "collect bikes from";
+    const bikeVerb = station.action === "DELIVER BIKES" ? "deliver" : "collect";
+    const bikes = Math.max(1, Math.round(Math.abs(station.net_flow)));
+    const window = Math.max(1, hoursTo - 1);
+    dispatchEl.style.display = 'block';
+    dispatchEl.innerHTML = `⏱ <strong>Dispatch recommendation:</strong> To <strong>${verb} ${station.station}</strong> before peak demand at <strong>${String(nextPeak).padStart(2,'0')}:00</strong>, dispatch crew within the next <strong>${window} hour${window > 1 ? 's' : ''}</strong> and ${bikeVerb} approximately <strong>${bikes} bike${bikes > 1 ? 's' : ''}</strong>.`;
+  } else {
+    dispatchEl.style.display = 'none';
+  }
+}
+updateForecast();
+
+// ── Date range days calculator ─────────────────────────────────
+function updateDays() {
+  const inputs = document.querySelectorAll('.date-input');
+  const from = new Date(inputs[0].value);
+  const to   = new Date(inputs[1].value);
+  const days = Math.max(0, Math.round((to - from) / 86400000) + 1);
+  const fmt = d => d.toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'});
+  document.getElementById('day-count').textContent = days;
+  document.getElementById('date-info').innerHTML =
+    `📅 Analysing: <strong>${fmt(from)}</strong> → <strong>${fmt(to)}</strong>&nbsp;&nbsp;(<span id="day-count">${days}</span> days)`;
+}
+
+// ── Table sort ─────────────────────────────────────────────────
+let sortCol = 3, sortAsc = false;
+function sortTable(col) {
+  if (sortCol === col) sortAsc = !sortAsc;
+  else { sortCol = col; sortAsc = false; }
+  const sorted = [...actionStations].sort((a, b) => {
+    const vals = [
+      [a.station, b.station],
+      [a.priority, b.priority],
+      [a.action, b.action],
+      [a.imb_score, b.imb_score],
+      [a.net_flow, b.net_flow],
+      [a.nb_docks, b.nb_docks],
+    ];
+    const [va, vb] = vals[col];
+    if (typeof va === 'string') return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+    return sortAsc ? va - vb : vb - va;
+  });
+  renderTable(sorted);
+}
+
+// ── Sidebar toggle (cosmetic) ──────────────────────────────────
+function toggleSwitch() {
+  const sw = document.getElementById('toggle-switch');
+  const lbl = document.getElementById('toggle-label-text');
+  sw.classList.toggle('off');
+  const isOff = sw.classList.contains('off');
+  lbl.innerHTML = isOff
+    ? 'Off — Live BigQuery <span class="bq-badge">BQ</span>'
+    : 'On — Mock CSV data';
+}
+</script>
+</body>
+</html>
