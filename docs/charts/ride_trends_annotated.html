@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CityCycle London — Ride Trends 2020–2023</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&family=DM+Mono:wght@400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: #F4F7F8;
+    color: #1A2E35;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem 3rem;
+    max-height: 100vh;
+  }
+
+  .container {
+    width: 100%;
+    max-width: 1400px;
+  }
+
+  .header {
+    margin-bottom: 1.2rem;
+  }
+
+  .header h1 {
+    font-size: 1.75rem;
+    font-weight: 600;
+    color: #0F2027;
+    letter-spacing: -0.02em;
+  }
+
+  .header p {
+    font-size: 0.82rem;
+    color: #5A8A92;
+    margin-top: 0.3rem;
+    font-weight: 300;
+  }
+
+  .chart-wrap {
+    height: 400px;
+    background: #FFFFFF;
+    border-radius: 12px;
+    padding: 2rem 2rem 1.5rem;
+    box-shadow: 0 2px 16px rgba(0,0,0,0.08), 0 1px 4px rgba(0,0,0,0.04);
+    border: 1px solid #E2EAEC;
+  }
+
+  canvas { display: block; }
+
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.8rem;
+    margin-top: 1.4rem;
+    padding-top: 1.1rem;
+    border-top: 1px solid #E2EAEC;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.78rem;
+    color: #4A7A82;
+  }
+
+  .legend-swatch {
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    flex-shrink: 0;
+  }
+
+  .footer {
+    margin-top: 1.2rem;
+    padding: 0 0.5rem;
+    font-size: 0.7rem;
+    color: #8AACB2;
+    font-style: italic;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="header">
+    <h1>Ride Trends 2020 – 2023</h1>
+    <p>CityCycle London · Monthly ride volume · 32,342,086 rides · bigquery-public-data.london_bicycles via Meltano → dbt → BigQuery</p>
+  </div>
+
+  <div class="chart-wrap">
+    <canvas id="chart"></canvas>
+
+    <div class="legend">
+      <div class="legend-item">
+        <div class="legend-swatch" style="background:#028090;"></div>
+        <span>Monthly rides</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-swatch" style="background:rgba(220,50,50,0.18);border:1.5px solid rgba(220,50,50,0.55);"></div>
+        <span>COVID lockdown periods</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-swatch" style="background:rgba(80,130,180,0.15);border:1.5px solid rgba(80,130,180,0.4);"></div>
+        <span>Winter seasonality (Nov–Feb)</span>
+      </div>
+      <div class="legend-item">
+        <div class="legend-swatch" style="background:rgba(230,140,50,0.18);border:1.5px solid rgba(230,140,50,0.5);"></div>
+        <span>Omicron / Plan B (Dec 2021)</span>
+      </div>
+    </div>
+    <div class="footer">
+      Source: citycycle-dsai4.citycycle_dev_marts.fact_rides &nbsp;·&nbsp; DSAI4 Module 2 · Team 2 · March 2026 &nbsp;·&nbsp;
+      Monthly values approximated from Looker Studio. Jul 2022 exact: 1,302,994 rides (notebook Cell 11).
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── Monthly labels (index 0 = Jan 2020) ───────────────────────────────
+const labels = [
+  'Jan 2020','Feb 2020','Mar 2020','Apr 2020','May 2020','Jun 2020',  // 0–5
+  'Jul 2020','Aug 2020','Sep 2020','Oct 2020','Nov 2020','Dec 2020',  // 6–11
+  'Jan 2021','Feb 2021','Mar 2021','Apr 2021','May 2021','Jun 2021',  // 12–17
+  'Jul 2021','Aug 2021','Sep 2021','Oct 2021','Nov 2021','Dec 2021',  // 18–23
+  'Jan 2022','Feb 2022','Mar 2022','Apr 2022','May 2022','Jun 2022',  // 24–29
+  'Jul 2022','Aug 2022','Sep 2022','Oct 2022','Nov 2022','Dec 2022',  // 30–35
+  'Jan 2023'                                                           // 36
+];
+
+// ── Approximate monthly ride counts ───────────────────────────────────
+const data = [
+  700000, 550000, 570000, 550000, 1050000, 1130000,  // Jan–Jun 2020
+  1140000, 1150000, 1120000, 800000, 740000, 600000, // Jul–Dec 2020
+  400000, 480000, 920000, 930000, 960000, 1170000,   // Jan–Jun 2021
+  1170000, 1160000, 1200000, 1110000, 930000, 650000,// Jul–Dec 2021
+  650000, 740000, 750000, 1030000, 1060000, 1170000, // Jan–Jun 2022
+  1302994, 1250000, 1070000, 830000, 600000, 580000, // Jul–Dec 2022
+  240000                                              // Jan 2023
+];
+
+// ── Band definitions — index-based, drawn via afterDraw ───────────────
+// start/end are label indices (inclusive). Pixel positions computed
+// from chart.scales.x.getPixelForValue(index) which is reliable.
+const bands = [
+  // COVID Lockdown 1: Mar 2020 (2) → Jun 2020 (5)
+  { start: 2,  end: 5,
+    fill: 'rgba(220,50,50,0.12)', stroke: 'rgba(220,50,50,0.5)',
+    label: 'Lockdown 1\nMar–Jun 2020', labelRow: 0 },
+
+  // Winter 2020/21: Nov 2020 (10) → Feb 2021 (13)
+  { start: 10, end: 13,
+    fill: 'rgba(80,130,180,0.12)', stroke: 'rgba(80,130,180,0.38)',
+    label: 'Winter 20/21', labelRow: 0 },
+
+  // COVID Lockdown 2 & 3: Jan 2021 (12) → Mar 2021 (14)
+  { start: 12, end: 14,
+    fill: 'rgba(220,50,50,0.12)', stroke: 'rgba(220,50,50,0.0)',
+    label: 'Lockdown 2 & 3\nJan–Mar 2021', labelRow: 1 },
+
+  // Winter 2021/22: Nov 2021 (22) → Feb 2022 (25)
+  { start: 22, end: 25,
+    fill: 'rgba(80,130,180,0.12)', stroke: 'rgba(80,130,180,0.38)',
+    label: 'Winter 21/22', labelRow: 0 },
+
+  // Omicron / Plan B: Dec 2021 (23) → Jan 2022 (24)
+  { start: 23, end: 24,
+    fill: 'rgba(230,140,50,0.15)', stroke: 'rgba(230,140,50,0.5)',
+    label: 'Omicron\nDec 2021', labelRow: 1 },
+
+  // Winter 2022/23: Nov 2022 (34) → Jan 2023 (36)
+  { start: 34, end: 36,
+    fill: 'rgba(80,130,180,0.12)', stroke: 'rgba(80,130,180,0.38)',
+    label: 'Winter 22/23', labelRow: 0 },
+];
+
+// ── Band + label plugin ───────────────────────────────────────────────
+const bandPlugin = {
+  id: 'bandPlugin',
+  beforeDatasetsDraw(chart) {
+    const { ctx, chartArea, scales } = chart;
+    if (!chartArea) return;
+    const xScale = scales.x;
+    const { top, bottom, height } = chartArea;
+
+    ctx.save();
+
+    bands.forEach(b => {
+      // Use getPixelForValue(index) — reliable across all tick modes
+      const x0 = xScale.getPixelForValue(b.start);
+      const x1 = xScale.getPixelForValue(b.end);
+      const w  = x1 - x0;
+
+      // Fill
+      ctx.fillStyle = b.fill;
+      ctx.fillRect(x0, top, w, height);
+
+      // Side borders
+      if (b.stroke !== 'rgba(220,50,50,0.0)') {
+        ctx.strokeStyle = b.stroke;
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(x0, top); ctx.lineTo(x0, bottom);
+        ctx.moveTo(x1, top); ctx.lineTo(x1, bottom);
+        ctx.stroke();
+      }
+
+      // Label — multiline support
+      const lines = b.label.split('\n');
+      const lx = x0 + w / 2;
+      const lineH = 13;
+      const pad = 7;
+      const boxH = lines.length * lineH + pad * 2;
+      const boxW = Math.max(...lines.map(l => {
+        ctx.font = '500 10px "DM Sans", sans-serif';
+        return ctx.measureText(l).width;
+      })) + pad * 2;
+
+      // Position: row 0 = near top, row 1 = below row 0
+      const ly = top + (b.labelRow === 0 ? 10 : 10 + boxH + 6);
+
+      // Pill bg
+      ctx.fillStyle = 'rgba(255,255,255,0.88)';
+      ctx.strokeStyle = b.stroke || 'rgba(0,0,0,0.15)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(lx - boxW/2, ly, boxW, boxH, 5);
+      ctx.fill();
+      ctx.stroke();
+
+      // Text
+      ctx.fillStyle = '#1A2E35';
+      ctx.font = '500 10px "DM Sans", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      lines.forEach((line, i) => {
+        ctx.fillText(line, lx, ly + pad + i * lineH);
+      });
+    });
+
+    ctx.restore();
+  }
+};
+
+// ── Peak annotation plugin ────────────────────────────────────────────
+const peakPlugin = {
+  id: 'peakPlugin',
+  afterDatasetsDraw(chart) {
+    const { ctx, chartArea, scales } = chart;
+    if (!chartArea) return;
+    const xScale = scales.x;
+    const yScale = scales.y;
+
+    const peakIdx = 30; // Jul 2022
+    const px = xScale.getPixelForValue(peakIdx);
+    const py = yScale.getPixelForValue(1302994);
+
+    ctx.save();
+
+    // Dotted vertical line
+    ctx.strokeStyle = 'rgba(2,128,144,0.5)';
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.moveTo(px, chartArea.bottom);
+    ctx.lineTo(px, py);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Dot at peak
+    ctx.fillStyle = '#028090';
+    ctx.beginPath();
+    ctx.arc(px, py, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#FFFFFF';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Label box
+    const lines = ['Peak: Jul 2022', '1,302,994 rides'];
+    ctx.font = '600 10px "DM Sans", sans-serif';
+    const bw = Math.max(...lines.map(l => ctx.measureText(l).width)) + 18;
+    const bh = 34;
+    const bx = px - bw / 2;
+    const by = py - bh - 10;
+
+    ctx.fillStyle = 'rgba(2,128,144,0.1)';
+    ctx.strokeStyle = 'rgba(2,128,144,0.6)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(bx, by, bw, bh, 5);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#028090';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.font = '600 10px "DM Sans", sans-serif';
+    ctx.fillText(lines[0], px, by + 6);
+    ctx.font = '400 9px "DM Mono", monospace';
+    ctx.fillStyle = '#1A2E35';
+    ctx.fillText(lines[1], px, by + 19);
+
+    ctx.restore();
+  }
+};
+
+// ── Chart ─────────────────────────────────────────────────────────────
+const ctx = document.getElementById('chart').getContext('2d');
+
+new Chart(ctx, {
+  type: 'line',
+  plugins: [bandPlugin, peakPlugin],
+  data: {
+    labels,
+    datasets: [{
+      label: 'Ride Count',
+      data,
+      borderColor: '#028090',
+      borderWidth: 2.5,
+      backgroundColor: 'rgba(2,128,144,0.08)',
+      fill: true,
+      tension: 0.35,
+      pointRadius: 0,
+      pointHoverRadius: 5,
+      pointHoverBackgroundColor: '#028090',
+      pointHoverBorderColor: '#FFFFFF',
+      pointHoverBorderWidth: 2,
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: 'rgba(255,255,255,0.96)',
+        titleColor: '#0F2027',
+        bodyColor: '#4A7A82',
+        borderColor: 'rgba(2,128,144,0.3)',
+        borderWidth: 1,
+        padding: 12,
+        titleFont: { family: 'DM Sans', weight: '600', size: 12 },
+        bodyFont: { family: 'DM Mono', size: 11 },
+        callbacks: {
+          label: ctx => '  ' + ctx.parsed.y.toLocaleString() + ' rides'
+        }
+      }
+    },
+    scales: {
+      x: {
+        grid: { color: 'rgba(0,0,0,0.05)' },
+        ticks: {
+          color: '#5A8A92',
+          font: { family: 'DM Sans', size: 10 },
+          maxRotation: 45,
+          autoSkip: true,
+          maxTicksLimit: 19,
+        },
+        border: { color: 'rgba(0,0,0,0.1)' }
+      },
+      y: {
+        grid: { color: 'rgba(0,0,0,0.05)' },
+        ticks: {
+          color: '#5A8A92',
+          font: { family: 'DM Mono', size: 10 },
+          callback: v => v >= 1000000
+            ? (v / 1000000).toFixed(1) + 'M'
+            : (v / 1000).toFixed(0) + 'K'
+        },
+        border: { color: 'rgba(0,0,0,0.1)' },
+        min: 0,
+        max: 1500000,
+      }
+    }
+  }
+});
+</script>
+</body>
+</html>
