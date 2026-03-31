@@ -94,3 +94,7 @@ npm-debug.log*
 analysis/notebooks/*.png
 analysis/notebooks/*.html
 !analysis/notebooks/01_eda_mock_data.html
+
+# ── Claude ──────────────────────────────────────────────────
+CLAUDE.md
+claude.md
