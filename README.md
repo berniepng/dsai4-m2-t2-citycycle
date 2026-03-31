@@ -5,7 +5,7 @@
 
 ---
 
-## Table of Contents TEST
+## Table of Contents
 
 1. [Business Problem](#business-problem)
 2. [Solution Overview](#solution-overview)
