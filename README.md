@@ -1,6 +1,6 @@
 # 🚲 CityCycle London — Bike Rebalancing Intelligence Pipeline
 
-> **dsai4-m2-t2-citycycle-c**  
+> **dsai4-m2-t2-citycycle**  
 > End-to-end ELT pipeline for the London Bicycle Sharing dataset, built for the CityCycle operations team to solve the bike rebalancing problem using data engineering, ML forecasting, and interactive dashboards.
 
 ---
@@ -22,7 +22,7 @@
    - [5. Analysis & ML (Python / scikit-learn)](#5-analysis--ml)
    - [6. Orchestration (GitHub Actions CI)](#6-orchestration-github-actions-ci)
    - [7. Dashboards (Streamlit + Looker Studio)](#7-dashboards)
-9. [Key Findings (Mock Data)](#key-findings-mock-data)
+9. [Key Findings (Live Data)](#key-findings-live-data)
 10. [Risks & Mitigations](#risks--mitigations)
 11. [Contributing](#contributing)
 
@@ -30,7 +30,7 @@
 
 ## Business Problem
 
-London's CityCycle bike-sharing network operates **795 docking stations** across the city, processing millions of rides annually. The core operational challenge is **bike rebalancing**: stations run empty (stranded demand) or overflow (no docks to return), leading to:
+London's CityCycle bike-sharing network operates **795 active docking stations** across the city, processing millions of rides annually. The core operational challenge is **bike rebalancing**: stations run empty (stranded demand) or overflow (no docks to return), leading to:
 
 - **Lost revenue** from unfulfilled rentals
 - **Increased operational costs** for manual rebalancing crews
@@ -66,7 +66,7 @@ The pipeline follows a **medallion-style** architecture:
 ## Tech Stack
 
 | Layer | Tool | Purpose |
-|-------|------|---------|
+|-------|------|---------| 
 | Ingestion | **Meltano** (tap-bigquery → target-bigquery) | Singer-protocol EL from source to raw |
 | Warehouse | **Google BigQuery** | Cloud data warehouse, star schema |
 | Transform | **dbt Core** | SQL-based ELT, lineage, testing |
@@ -80,7 +80,7 @@ The pipeline follows a **medallion-style** architecture:
 ## Repository Structure
 
 ```
-dsai4-m2-t2-citycycle-c/
+dsai4-m2-t2-citycycle/
 ├── .github/
 │   └── workflows/
 │       └── ci.yml                    # GitHub Actions: lint, mock-data, dbt-compile, train-model, notebook
@@ -102,9 +102,9 @@ dsai4-m2-t2-citycycle-c/
 │   │   │   └── int_station_daily_stats.sql   # Daily imbalance per station
 │   │   └── marts/
 │   │       ├── dim_stations.sql      # Station dimension with rebalancing priority
-│   │       ├── dim_date.sql          # Date spine 2010–2030
+│   │       ├── dim_date.sql          # Date spine 2015–2025
 │   │       ├── fact_rides.sql        # 32.3M rows, partitioned by hire_date
-│   │       └── _marts.yml            # 31 schema tests
+│   │       └── _marts.yml            # 31 schema tests (56 PASS · 0 ERROR · 3 WARN in last run)
 │   ├── macros/
 │   │   └── generate_surrogate_key.sql
 │   └── tests/
@@ -129,7 +129,7 @@ dsai4-m2-t2-citycycle-c/
 ├── analysis/
 │   └── notebooks/
 │       ├── 01_eda_mock_data.ipynb           # Initial EDA on mock data
-│       └── 02_bq_eda_live_data.ipynb        # Live BQ EDA via SQLAlchemy (32M rows)
+│       └── 03_bq_eda_live_data.ipynb        # Live BQ EDA via SQLAlchemy (32M rows)
 ├── ml/
 │   └── models/
 │       └── train_demand_model.py     # 3-model comparison: Linear Reg · Random Forest · XGBoost
@@ -139,7 +139,8 @@ dsai4-m2-t2-citycycle-c/
 │   │   ├── 01_overview.py            # KPIs + daily trend + hourly demand
 │   │   ├── 02_station_map.py         # pydeck 3D + folium detailed map
 │   │   ├── 03_rebalancing.py         # Intervention list + crew runs estimate
-│   │   └── 04_forecast.py            # 24h XGBoost demand forecast
+│   │   ├── 04_forecast.py            # 24h XGBoost demand forecast
+│   │   └── 05_scenario.py            # Guided scenario planner — corridor + dispatch
 │   └── utils/
 │       ├── bq_client.py              # BQ connection via cost guard
 │       └── mock_data_generator.py    # Synthetic data generator (CI-safe)
@@ -170,8 +171,8 @@ dsai4-m2-t2-citycycle-c/
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/YOUR_ORG/dsai4-m2-t2-citycycle-c.git
-cd dsai4-m2-t2-citycycle-c
+git clone https://github.com/YOUR_ORG/dsai4-m2-t2-citycycle.git
+cd dsai4-m2-t2-citycycle
 
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
@@ -230,7 +231,7 @@ BigQuery's free tier provides **1 TB of query processing per month**. The `cycle
 ### Our Approach
 
 | Risk | Mitigation |
-|------|-----------|
+|------|-----------| 
 | Full-table scan on `cycle_hire` | `LIMIT` clauses on all dev queries; partitioned by `hire_date` |
 | Accidental `SELECT *` | dbt `+limit` macro in dev profile; BQ slot quota set |
 | Exceeding 1 TB free tier | Dry-run cost estimates before every query; budget alert at 80% |
@@ -271,31 +272,47 @@ meltano run tap-bigquery target-bigquery
 Star schema optimised for ride analytics and rebalancing queries:
 
 **Fact Table:**
-- `fact_rides` — one row per ride: duration, start/end station FK, date FK, hour, day-of-week
+- `fact_rides` — one row per ride: duration, start/end station FK, date FK, hour, day-of-week, imbalance signals
 
 **Dimension Tables:**
-- `dim_stations` — station metadata: name, location (lat/lon), dock capacity, zone
-- `dim_date` — date spine: year, month, week, is_weekend, is_holiday (UK bank holidays)
-- `dim_duration` — banded ride durations (short/medium/long/extended)
+- `dim_stations` — station metadata: name, location (lat/lon), dock capacity, zone, rebalancing priority tier
+- `dim_date` — date spine 2015–2025: year, month, week, is_weekend, is_holiday (UK bank holidays 2023–2024)
 
 ### 3. ELT Transformation (dbt)
 
 ```
 raw.cycle_hire
-    └── stg_cycle_hire        (cast types, rename columns, parse timestamps)
-        └── int_rides_enriched (join stations, add peak_hour_flag, duration_band)
-            └── fact_rides     (final fact table, add is_station_imbalanced flag)
+    └── stg_cycle_hire        (cast types, rename columns, parse timestamps, filter bad rows)
+        └── int_rides_enriched (join stations, add peak_hour_flag, duration_band, time_period)
+            └── fact_rides     (final fact table, join imbalance signals, rolling_7d_avg)
 
 raw.cycle_stations
-    └── stg_cycle_stations    (clean nulls, add zone via lat/lon lookup)
-        └── dim_stations       (final dimension, add capacity_tier)
+    └── stg_cycle_stations    (clean nulls, add zone via lat/lon bounding boxes, capacity_tier)
+        └── dim_stations       (final dimension, all-time imbalance stats, rebalancing_priority)
 ```
 
-Derived columns generated in dbt:
-- `ride_duration_minutes` — `TIMESTAMP_DIFF(end_date, start_date, MINUTE)`
-- `peak_hour_flag` — 1 if 07:00–09:00 or 17:00–19:00, else 0
-- `is_station_imbalanced` — 1 if net outflow > 20% over rolling 7-day window
-- `weekly_demand_index` — normalised ride count relative to station capacity
+**Materialisation strategy:**
+- `staging/` and `intermediate/` → **views** (zero storage cost, always fresh)
+- `marts/` → **tables** (materialised for fast dashboard queries)
+- `fact_rides` → additionally **partitioned by `hire_date`** and **clustered by `start_station_id`, `end_station_id`** for cost-efficient rebalancing queries
+
+Derived columns generated in dbt (selected key fields):
+
+| Field | Layer | Formula |
+|-------|-------|---------|
+| `duration_minutes` | intermediate | `duration_seconds / 60.0` |
+| `peak_hour_flag` | intermediate | `1` if `start_hour IN (7, 8, 17, 18)` else `0` |
+| `duration_band` | intermediate | `short` <10 min · `medium` 10–30 · `long` 30–60 · `extended` >60 |
+| `time_period` | intermediate | `am_peak` · `pm_peak` · `midday` · `evening` · `night` |
+| `is_round_trip` | intermediate | `TRUE` if `start_station_id = end_station_id` |
+| `net_flow` | intermediate | `total_departures - total_arrivals` per station per day |
+| `imbalance_score` | intermediate | `ABS(net_flow) / MAX(departures + arrivals, 1)` — range 0–1 |
+| `is_imbalanced` | intermediate | `TRUE` if `imbalance_score > 0.20` |
+| `rebalancing_priority` | marts | `CRITICAL` ≥0.25 · `HIGH` ≥0.18 · `MEDIUM` ≥0.10 · `LOW` <0.10 |
+| `rolling_7d_avg` | marts | 7-day rolling average departures per station — ML feature |
+| `ride_sk` / `station_sk` | marts | Surrogate keys via `dbt_utils.generate_surrogate_key` |
+
+**dbt tests:** 56 PASS · 0 ERROR · 3 WARN (intentional `severity: warn` on nullable FK fields)
 
 ### 4. Data Quality (Great Expectations)
 
@@ -309,25 +326,30 @@ Two checkpoint stages:
 
 **Post-transform checkpoint** (`fact_rides`, `dim_stations`):
 - No orphan station FK references
-- `ride_duration_minutes` between 1 and 1440
-- `is_station_imbalanced` only 0 or 1
+- `duration_minutes` between 1 and 1440
+- `start_station_is_imbalanced` only TRUE/FALSE
 - Null rate < 5% on all key columns
 
-Results are published as HTML data docs.
+Results: **30 PASS · 4 WARN · 0 FAIL**. Results published as HTML data docs.
 
 ### 5. Analysis & ML
 
 #### EDA (notebooks)
-- Monthly and hourly ride trends
-- Top 20 most-used start/end stations
-- Station-level imbalance detection (net flow heatmap)
-- Customer segmentation: commuter vs casual (duration + time patterns)
+- `01_eda_mock_data.ipynb` — initial pipeline validation on synthetic data
+- `03_bq_eda_live_data.ipynb` — full EDA on 32M rides via SQLAlchemy + BigQuery
+
+Key findings from EDA:
+- Monthly and hourly ride trends with COVID-19 signal
+- Weekday double-peak confirmed at 08:00 and 17:00–18:00
+- K-Means k=3 customer segmentation: **Leisure 53% · Casual 32% · Commuter 15%**
+- Station-level imbalance ranking: 3 CRITICAL, 27 HIGH priority stations identified
 
 #### Demand Forecasting Model
-- **Features**: hour_of_day, day_of_week, is_weekend, is_holiday, station_id (encoded), rolling_7d_avg, season
-- **Target**: `ride_count` per station per hour (next 24h)
-- **Models tested**: RandomForest, XGBoost, LinearRegression (baseline)
-- **Metric**: RMSE on 20% holdout; MAE for operational thresholds
+- **Features**: `hour`, `day_of_week`, `is_weekend`, `is_holiday`, `season`, `start_station_id`, `rolling_7d_avg`
+- **Target**: hourly departures per station
+- **Models tested**: Linear Regression (baseline) · Random Forest · XGBoost
+- **Split**: 80/20 train/test · ~10.4M feature rows · no cross-validation
+- **Best model**: XGBoost — RMSE 2.422 · MAE 1.508 · R² 0.488
 
 ### 6. Orchestration
 
@@ -377,16 +399,18 @@ dagster dev -f orchestration/jobs/citycycle_pipeline_job.py
 
 ### 7. Dashboards
 
-#### Streamlit (Operational)
+#### Streamlit (Operational) — 5 pages
 - **Overview**: Daily ride KPIs, imbalance score, fleet utilisation
-- **Station Map**: Pydeck geospatial map of all 795 stations, colour-coded by imbalance severity
+- **Station Map**: Pydeck geospatial map of all 795 stations, colour-coded by imbalance severity (CRITICAL · HIGH · MEDIUM · LOW)
 - **Rebalancing**: Ranked list of stations needing intervention, with predicted demand delta
-- **Forecast**: 24h demand forecast per station with confidence intervals
+- **Forecast**: 24h XGBoost demand forecast per station
+- **Scenario Planner**: Guided 6-step operational corridor scenario — select zone, filter priority stations, view dispatch recommendations with bikes needed from `abs(net_flow)`
 
 #### Looker Studio (Executive)
 - Connected directly to BigQuery `marts.*` dataset
 - KPI scorecard: total rides, avg duration, peak utilisation, rebalancing interventions
 - Scheduled weekly PDF email to operations leadership
+- Live report: https://lookerstudio.google.com/reporting/6f170d3a-8fb7-4347-8622-87f25ae3ed15
 
 ---
 
@@ -397,16 +421,19 @@ dagster dev -f orchestration/jobs/citycycle_pipeline_job.py
 | Metric | Value | Insight |
 |--------|-------|---------|
 | Total rides analysed | 32,342,086 | Full 2020–2023 dataset |
-| Avg ride duration | 21.8 min | Short-hop commuter and leisure trips |
-| Peak hour share | 29.4% | Nearly 1 in 3 rides during peak hours |
-| Peak demand hours | 08:00 & 17:00–18:00 | Classic London commuter double peak |
-| Weekend rides | 9,472,827 (29.3%) | Strong leisure demand on weekends |
-| Imbalanced station rate | 6.15% of rides | Stations flagged above 0.2 threshold |
-| Critical stations | 3 | Require urgent daily intervention |
-| High priority stations | 27 | Require scheduled intervention |
-| ML model (XGBoost) RMSE | 2.422 rides/station/hour | Best of 3 models tested |
-| ML model R² | 0.488 | Explains 49% of demand variance |
-| Top draining zone | South Quay East, Canary Wharf | Score 0.50 — needs bikes delivered daily |
+| Average ride duration | 21.8 min | Mixed use confirmed — commuter and leisure trips coexist |
+| Rider segments | Leisure 53% · Casual 32% · Commuter 15% | K-Means k=3 on 30K sample — each segment drains stations differently |
+| Weekend rides | 9,472,827 (29.3%) | Strong leisure demand — different rebalancing strategy required Sat/Sun |
+| Peak demand hours | 08:00 & 17:00–18:00 (hours 7, 8, 17, 18) | Classic London commuter double-peak |
+| Avg network imbalance score | 0.084 | Scores above 0.18 trigger scheduled crew intervention |
+| Critical stations | 3 | Score ≥ 0.25: New North Road Hoxton · Ladbroke Grove Central · Cloudesley Road Angel |
+| High priority stations | 27 | Score ≥ 0.18 — require scheduled daily intervention |
+| Top draining station | New North Road Hoxton | Score 0.324 · Net flow +7.0 bikes/day · Draining 90% of days |
+| XGBoost RMSE | 2.422 rides/station/hour | Best of 3 models — within operational planning threshold |
+| XGBoost R² | 0.488 | Explains 49% of demand variance |
+| COVID-19 signal | Visible in 2020 | Ridership collapse Mar–May 2020 · Full recovery by mid-2022 |
+
+---
 
 ## Risks & Mitigations
 
@@ -418,9 +445,6 @@ dagster dev -f orchestration/jobs/citycycle_pipeline_job.py
 | ML model staleness | Medium | Medium | Retrain script in `train_demand_model.py`; model versioned in `ml/models/` |
 | Dashboard downtime | Low | Low | Streamlit caches last-good result; graceful error states |
 | Credentials leaked to Git | Low | Critical | .gitignore covers all credential patterns; .env.example only |
-
----
-
 
 ---
 
@@ -471,13 +495,13 @@ Approximately half of all fields in the star schema are **engineered features** 
 | `is_weekend` | `day_of_week IN (1, 7)` |
 | `duration_minutes` | `duration_seconds / 60.0` |
 | `duration_band` | `short` <10 min · `medium` 10–30 · `long` 30–60 · `extended` >60 |
-| `peak_hour_flag` | `1` if start_hour IN (7, 8, 17, 18) else `0` |
+| `peak_hour_flag` | `1` if `start_hour IN (7, 8, 17, 18)` else `0` |
 | `time_period` | `am_peak` (07–09) · `pm_peak` (17–19) · `midday` · `evening` · `night` |
 | `season` | `spring` (Mar–May) · `summer` (Jun–Aug) · `autumn` (Sep–Nov) · `winter` (Dec–Feb) |
-| `is_round_trip` | `TRUE` if start_station_id = end_station_id |
+| `is_round_trip` | `TRUE` if `start_station_id = end_station_id` |
 | `ride_sk` | Surrogate key — `dbt_utils.generate_surrogate_key(['rental_id'])` |
 | `net_flow` | `total_departures - total_arrivals` per station per day (joined from `int_station_daily_stats`) |
-| `imbalance_score` | `ABS(departures - arrivals) / (departures + arrivals)` — range 0 to 1 |
+| `imbalance_score` | `ABS(departures - arrivals) / MAX(departures + arrivals, 1)` — range 0 to 1 |
 | `imbalance_direction` | `draining` (net_flow > 0) · `filling` (net_flow < 0) · `balanced` (net_flow = 0) |
 | `rebalancing_priority` | `CRITICAL` (≥0.25) · `HIGH` (≥0.18) · `MEDIUM` (≥0.10) · `LOW` (<0.10) |
 | `rolling_7d_avg` | 7-day rolling average of departures per station — used as ML feature |
@@ -505,6 +529,7 @@ Approximately half of all fields in the star schema are **engineered features** 
 | `day_of_week` | `EXTRACT(DAYOFWEEK FROM full_date)` |
 | `is_weekend` | `day_of_week IN (1, 7)` |
 | `season` | Same CASE logic as fact_rides |
+| `is_uk_bank_holiday` | Hardcoded for 2023–2024 only — FALSE for all 2020–2022 rides |
 
 > **Fields sourced directly from raw data (not calculated):** `rental_id`, `bike_id`, `start_datetime`, `end_datetime`, `start_station_id`, `end_station_id`, `station_name`, `latitude`, `longitude`, `nb_docks`, `is_installed`, `is_locked`, `zone`, `terminal_name`
 
@@ -527,6 +552,13 @@ All raw fields are retained and the following are added or renamed:
 | `day_of_week` | INT64 | **Calculated** | `EXTRACT(DAYOFWEEK FROM start_datetime)` — 1=Sunday … 7=Saturday |
 | `is_weekend` | BOOL | **Calculated** | `TRUE` if day_of_week IN (1, 7) — used to split commuter vs leisure demand patterns |
 
+**Row filters applied in staging:**
+- `rental_id IS NOT NULL`
+- `duration_seconds BETWEEN 60 AND 86400`
+- `end_datetime > start_datetime`
+
+These filters reduce 32,369,326 raw rows to 32,342,086 in the final fact table.
+
 #### `stg_cycle_stations` — Cleaned station records
 | Field | Type | Source | Description |
 |-------|------|--------|-------------|
@@ -540,8 +572,8 @@ All raw fields are retained and the following are added or renamed:
 | `is_locked` | BOOL | `locked` | Renamed for consistency |
 | `is_temporary` | BOOL | `temporary` | Renamed for consistency |
 | `install_date` | DATE | raw | Cast to DATE |
-| `zone` | STRING | **Calculated** | London area classification based on lat/lon bounding boxes: `City & Shoreditch`, `Westminster & Victoria`, `Waterloo & Southbank`, `Camden & Islington`, `East End & Canary Wharf`, `Kensington & Chelsea`, `Other`. Used for geographic aggregation in rebalancing analysis. |
-| `capacity_tier` | STRING | **Calculated** | Station size classification: `small` (≤15 docks), `medium` (≤24 docks), `large` (>24 docks). Used to contextualise imbalance severity — a small station becomes critical faster than a large one. |
+| `zone` | STRING | **Calculated** | London area classification based on lat/lon bounding boxes: `City & Shoreditch`, `Westminster & Victoria`, `Waterloo & Southbank`, `Camden & Islington`, `East End & Canary Wharf`, `Kensington & Chelsea`, `Other`. |
+| `capacity_tier` | STRING | **Calculated** | Station size classification: `small` (≤15 docks), `medium` (≤24 docks), `large` (>24 docks). |
 
 ---
 
@@ -552,11 +584,11 @@ Joins `stg_cycle_hire` with `stg_cycle_stations` (twice — once for start, once
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `duration_minutes` | FLOAT64 | **Calculated** — `duration_seconds / 60.0`. Human-readable duration used in all analysis and dashboards |
-| `duration_band` | STRING | **Calculated** — categorises ride length: `short` (<10 min), `medium` (10–30 min), `long` (30–60 min), `extended` (>60 min). Used for customer segmentation to distinguish commuter from leisure trips |
-| `peak_hour_flag` | INT64 | **Calculated** — `1` if start_hour IN (7, 8, 17, 18), else `0`. Marks London commuter peak hours (07:00–09:00 AM and 17:00–19:00 PM). Core feature for ML demand forecasting |
-| `time_period` | STRING | **Calculated** — finer-grained period: `am_peak`, `pm_peak`, `midday`, `evening`, `night`. Used as ML feature and for operational scheduling |
-| `is_round_trip` | BOOL | **Calculated** — `TRUE` if start_station_id = end_station_id. Identifies leisure loops vs point-to-point commuter rides |
+| `duration_minutes` | FLOAT64 | **Calculated** — `duration_seconds / 60.0` |
+| `duration_band` | STRING | **Calculated** — `short` (<10 min), `medium` (10–30 min), `long` (30–60 min), `extended` (>60 min) |
+| `peak_hour_flag` | INT64 | **Calculated** — `1` if `start_hour IN (7, 8, 17, 18)`, else `0`. Marks London commuter peak hours. Core ML feature. |
+| `time_period` | STRING | **Calculated** — `am_peak`, `pm_peak`, `midday`, `evening`, `night` |
+| `is_round_trip` | BOOL | **Calculated** — `TRUE` if `start_station_id = end_station_id` |
 | `start_zone` | STRING | Joined from `stg_cycle_stations` — zone of the departure station |
 | `start_lat` / `start_lon` | FLOAT64 | Joined — coordinates for geospatial mapping |
 | `start_nb_docks` | INT64 | Joined — dock capacity of the departure station |
@@ -573,30 +605,29 @@ Aggregates ride data to one row per station per day, computing the core rebalanc
 | `station_id` | INT64 | Station identifier |
 | `total_departures` | INT64 | **Calculated** — count of rides starting at this station on this date |
 | `total_arrivals` | INT64 | **Calculated** — count of rides ending at this station on this date |
-| `net_flow` | INT64 | **Calculated** — `total_departures - total_arrivals`. Positive = draining (bikes leaving), negative = filling (bikes accumulating) |
-| `imbalance_score` | FLOAT64 | **Calculated** — `ABS(net_flow) / (total_departures + total_arrivals)`. Normalised 0–1 score measuring how lopsided the flow is. 0 = perfectly balanced, 1 = entirely one-directional. Key metric for crew dispatch prioritisation |
-| `is_imbalanced` | BOOL | **Calculated** — `TRUE` if imbalance_score > 0.2. Flags stations exceeding the 20% flow imbalance threshold |
-| `imbalance_direction` | STRING | **Calculated** — `draining` (net_flow > 0, needs bikes delivered), `filling` (net_flow < 0, needs bikes collected), `balanced` (net_flow = 0) |
-| `utilisation_rate` | FLOAT64 | **Calculated** — `(total_departures + total_arrivals) / (nb_docks × 2)`. Measures how busy the station is relative to its capacity |
+| `net_flow` | INT64 | **Calculated** — `total_departures - total_arrivals`. Positive = draining, negative = filling |
+| `imbalance_score` | FLOAT64 | **Calculated** — `ABS(net_flow) / MAX(departures + arrivals, 1)`. Normalised 0–1 score. |
+| `is_imbalanced` | BOOL | **Calculated** — `TRUE` if `imbalance_score > 0.20` |
+| `imbalance_direction` | STRING | **Calculated** — `draining`, `filling`, or `balanced` |
+| `utilisation_rate` | FLOAT64 | **Calculated** — `(departures + arrivals) / (nb_docks × 2)` |
 | `peak_departures` | INT64 | **Calculated** — departures during peak hours only |
-| `rolling_7d_avg_departures` | FLOAT64 | **Calculated** (in fact_rides) — 7-day rolling average of departures, used as ML feature to capture demand momentum |
 
 ---
 
 ### Marts Layer (`citycycle_dev_marts`)
 
-#### `fact_rides` — Final fact table (32.3M rows)
-One row per ride, partitioned by `hire_date`, clustered by `start_station_id`. Combines all enriched ride fields with station-level imbalance signals joined from `int_station_daily_stats`:
+#### `fact_rides` — Final fact table (32,342,086 rows)
+One row per ride, **partitioned by `hire_date`** (day granularity), **clustered by `start_station_id`, `end_station_id`**. Combines all enriched ride fields with station-level imbalance signals joined from `int_station_daily_stats`:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `ride_sk` | STRING | **Calculated** — surrogate key generated via `dbt_utils.generate_surrogate_key(['rental_id'])`. Stable unique key for the fact table |
-| `start_station_imbalance_score` | FLOAT64 | Joined from `int_station_daily_stats` — imbalance score of the departure station on the ride date |
-| `start_station_is_imbalanced` | BOOL | Joined — whether the departure station was flagged as imbalanced on the ride date |
-| `start_station_imbalance_direction` | STRING | Joined — `draining`, `filling`, or `balanced` for the departure station |
+| `ride_sk` | STRING | **Calculated** — surrogate key via `dbt_utils.generate_surrogate_key(['rental_id'])` |
+| `start_station_imbalance_score` | FLOAT64 | Joined — imbalance score of the departure station on the ride date |
+| `start_station_is_imbalanced` | BOOL | Joined — whether the departure station was flagged as imbalanced |
+| `start_station_imbalance_direction` | STRING | Joined — `draining`, `filling`, or `balanced` |
 | `start_station_net_flow` | INT64 | Joined — net bike flow at the departure station on the ride date |
-| `start_station_utilisation_rate` | FLOAT64 | Joined — utilisation rate of the departure station on the ride date |
-| `start_station_rolling_7d_avg` | FLOAT64 | Joined — 7-day rolling average demand at the departure station, used as ML feature |
+| `start_station_utilisation_rate` | FLOAT64 | Joined — utilisation rate of the departure station |
+| `start_station_rolling_7d_avg` | FLOAT64 | Joined — 7-day rolling average demand, used as ML feature |
 
 #### `dim_stations` — Station dimension table (798 rows)
 One row per station with all-time average imbalance metrics:
@@ -604,26 +635,28 @@ One row per station with all-time average imbalance metrics:
 | Field | Type | Description |
 |-------|------|-------------|
 | `station_sk` | STRING | **Calculated** — surrogate key |
-| `avg_imbalance_score_7d` | FLOAT64 | **Calculated** — all-time average imbalance score (named for historical reasons; now uses full dataset average after removing the 7-day filter that caused all-zero scores) |
-| `rebalancing_priority` | STRING | **Calculated** — tier classification: `CRITICAL` (score ≥ 0.25), `HIGH` (≥ 0.18), `MEDIUM` (≥ 0.10), `LOW` (<0.10). Used in Looker Studio station map and rebalancing dashboard |
+| `avg_imbalance_score_7d` | FLOAT64 | **Calculated** — all-time average imbalance score (uses full dataset average; named `_7d` for historical reasons) |
+| `rebalancing_priority` | STRING | **Calculated** — `CRITICAL` (≥0.25), `HIGH` (≥0.18), `MEDIUM` (≥0.10), `LOW` (<0.10) |
 | `total_departures_all_time` | INT64 | **Calculated** — cumulative departures across the full dataset |
 | `total_arrivals_all_time` | INT64 | **Calculated** — cumulative arrivals across the full dataset |
 | `last_activity_date` | DATE | Most recent date with recorded activity at this station |
 
 #### `dim_date` — Date dimension (4,000 rows)
-Standard date spine from 2010 to 2030:
+Date spine from 2015 to 2025:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `date_id` | DATE | Primary key — calendar date |
+| `date_id` | INT64 | Primary key — YYYYMMDD integer |
 | `full_date` | DATE | Full date value |
 | `year` | INT64 | Calendar year |
 | `month` | INT64 | Month number (1–12) |
-| `day` | INT64 | Day of month |
-| `week_num` | INT64 | ISO week number |
+| `week_number` | INT64 | ISO week number |
 | `day_of_week` | INT64 | Day number (1=Sunday … 7=Saturday) |
 | `is_weekend` | BOOL | TRUE for Saturday and Sunday |
 | `season` | STRING | `spring`, `summer`, `autumn`, `winter` based on month |
+| `is_uk_bank_holiday` | BOOL | TRUE for UK bank holidays — **hardcoded for 2023–2024 only** |
+
+---
 
 ## Contributing
 
@@ -635,4 +668,4 @@ Standard date spine from 2010 to 2030:
 
 ---
 
-*Built for DSAI Module 2 Project — CityCycle Team 2*
+*DSAI4 Module 2 · Team 2 · March 2026*
