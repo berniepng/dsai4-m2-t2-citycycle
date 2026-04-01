@@ -50,7 +50,6 @@ meltano_state/
 great_expectations/uncommitted/
 great_expectations/validations/
 great_expectations/data_docs/
-quality/ge_results.json
 
 # ── Dagster ───────────────────────────────────────────────
 $DAGSTER_HOME/
@@ -87,9 +86,6 @@ npm-debug.log*
 *.h5
 *.pt
 *.pth
-
-# ── GE results (keep for evidence) ───────────────────────
-!quality/ge_results.json
 
 # ── Notebook outputs (charts saved during runs) ───────────
 analysis/notebooks/*.png
