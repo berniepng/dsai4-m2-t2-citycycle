@@ -50,6 +50,7 @@ meltano_state/
 great_expectations/uncommitted/
 great_expectations/validations/
 great_expectations/data_docs/
+quality/ge_results.json
 
 # ── Dagster ───────────────────────────────────────────────
 $DAGSTER_HOME/
