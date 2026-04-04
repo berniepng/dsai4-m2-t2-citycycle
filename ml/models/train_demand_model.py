@@ -215,7 +215,7 @@ def train(source: str = "mock") -> None:
                     day_of_week,
                     is_weekend,
                     peak_hour_flag
-                FROM `{project}.citycycle_dev_marts.fact_rides`
+                FROM `""" + project + """.citycycle_dev_marts.fact_rides`
                 WHERE hire_date BETWEEN '2020-01-01' AND '2023-01-31'
             """
             dry = client.query(
