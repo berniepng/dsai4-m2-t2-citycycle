@@ -413,13 +413,13 @@ dagster dev -f orchestration/jobs/citycycle_pipeline_job.py
 
 #### Streamlit (Operational) — 5 pages
 
-| Page | File | Description |
-|------|------|-------------|
-| Overview | `01_overview.py` | Daily ride KPIs, imbalance score, fleet utilisation |
-| Station Map | `02_station_map.py` | Pydeck geospatial map of all 795 stations, colour-coded by priority (CRITICAL · HIGH · MEDIUM · LOW) |
-| Rebalancing | `03_rebalancing.py` | Ranked list of stations needing intervention, with predicted demand delta |
-| Forecast | `04_forecast.py` | 24h XGBoost demand forecast per station |
-| Scenario Planner | `05_scenario.py` | Guided 6-step operational crew dispatch workflow (see below) |
+| Page             | File                | Description                                                                                          |
+| ---------------- | ------------------- | ---------------------------------------------------------------------------------------------------- |
+| Overview         | `01_overview.py`    | Daily ride KPIs, imbalance score, fleet utilisation                                                  |
+| Station Map      | `02_station_map.py` | Pydeck geospatial map of all 795 stations, colour-coded by priority (CRITICAL · HIGH · MEDIUM · LOW) |
+| Rebalancing      | `03_rebalancing.py` | Ranked list of stations needing intervention, with predicted demand delta                            |
+| Forecast         | `04_forecast.py`    | 24h XGBoost demand forecast per station                                                              |
+| Scenario Planner | `05_scenario.py`    | Guided 6-step operational crew dispatch workflow (see below)                                         |
 
 **Scenario Planner — `05_scenario.py`**
 
@@ -450,7 +450,7 @@ Connected directly to BigQuery `citycycle_dev_marts` via live connector. Include
 - **Station rebalancing tables:** Draining and filling stations ranked by imbalance score
 - **Date range filter:** Fixed to `2020-01-01` → `2023-01-15` — dataset does not extend to present
 
-> 📄 **Looker Studio PDF export:** [`docs/presentation/lookerstudio_CityCycle_London_Ops.pdf`](docs/presentation/lookerstudio_CityCycle_London_Ops.pdf)
+> 📄 **Looker Studio PDF export:** [`docs/presentation/lookerstudio_CityCycle_London_Ops.pdf`](https://github.com/berniepng/dsai4-m2-t2-citycycle/blob/main/docs/presentation/lookerstudio_CityCyle_London_Ops.pdf)
 
 ---
 
@@ -458,18 +458,18 @@ Connected directly to BigQuery `citycycle_dev_marts` via live connector. Include
 
 > These findings are based on **32,342,086 real rides** from `bigquery-public-data.london_bicycles` ingested into the CityCycle data warehouse and analysed via the full ELT pipeline.
 
-| Metric | Value | Insight & Business Implication |
-|--------|-------|-------------------------------|
-| Total rides (2020–2023) | 32,342,086 | 3 years of real operational data — sufficient for trend detection and ML model training |
-| Average ride duration | 21.8 minutes | Mixed use confirmed — commuter and leisure trips coexist across the network |
-| Rider segments | Leisure 53% · Casual 32% · Commuter 15% | K-Means k=3 — each segment drains stations in different directions at different times |
-| Weekend rides | 9.47M (29.3%) | Strong leisure demand — different rebalancing strategy required Sat/Sun vs weekdays |
-| Avg network imbalance score | 0.084 | Network-wide baseline — scores above 0.18 trigger scheduled crew intervention |
-| Critical stations | 3 stations | Score ≥ 0.25: New North Road Hoxton · Ladbroke Grove Central · Cloudesley Road Angel |
-| High priority stations | 27 stations | Score ≥ 0.18 — require scheduled daily intervention by rebalancing crews |
-| XGBoost RMSE | 2.422 rides/hr | Best of 3 models tested — within operational planning threshold for crew dispatch |
-| Top draining station | New North Road Hoxton | Score 0.324 · Net flow +7.0 bikes/day · Draining 90% of days — needs daily pre-AM crew |
-| COVID-19 signal | Visible in 2020 | Clear ridership collapse March–May 2020, full recovery to pre-pandemic levels by mid-2022 |
+| Metric                      | Value                                   | Insight & Business Implication                                                            |
+| --------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Total rides (2020–2023)     | 32,342,086                              | 3 years of real operational data — sufficient for trend detection and ML model training   |
+| Average ride duration       | 21.8 minutes                            | Mixed use confirmed — commuter and leisure trips coexist across the network               |
+| Rider segments              | Leisure 53% · Casual 32% · Commuter 15% | K-Means k=3 — each segment drains stations in different directions at different times     |
+| Weekend rides               | 9.47M (29.3%)                           | Strong leisure demand — different rebalancing strategy required Sat/Sun vs weekdays       |
+| Avg network imbalance score | 0.084                                   | Network-wide baseline — scores above 0.18 trigger scheduled crew intervention             |
+| Critical stations           | 3 stations                              | Score ≥ 0.25: New North Road Hoxton · Ladbroke Grove Central · Cloudesley Road Angel      |
+| High priority stations      | 27 stations                             | Score ≥ 0.18 — require scheduled daily intervention by rebalancing crews                  |
+| XGBoost RMSE                | 2.422 rides/hr                          | Best of 3 models tested — within operational planning threshold for crew dispatch         |
+| Top draining station        | New North Road Hoxton                   | Score 0.324 · Net flow +7.0 bikes/day · Draining 90% of days — needs daily pre-AM crew    |
+| COVID-19 signal             | Visible in 2020                         | Clear ridership collapse March–May 2020, full recovery to pre-pandemic levels by mid-2022 |
 
 ---
 
@@ -477,11 +477,11 @@ Connected directly to BigQuery `citycycle_dev_marts` via live connector. Include
 
 Ride demand across 2020–2023 is shaped by two compounding forces outside the pipeline's control: **COVID-19 lockdown waves** and **London's natural winter cycling seasonality**. Neither appears as a feature in the ML model, which is why XGBoost explains 49% of variance — the remaining 51% is largely attributable to these exogenous signals.
 
-| Period | Type | Impact |
-|--------|------|--------|
-| Mar–Jun 2020 | 🔴 Lockdown 1 | ~500K rides/month — first national lockdown |
-| Nov 2020–Jan 2021 | 🔴 Lockdown 2 + 3 | ~400K rides/month — deepest trough in dataset |
-| Dec 2021–Jan 2022 | 🟡 Omicron / Plan B | ~650K — work from home reintroduced |
+| Period             | Type                  | Impact                                              |
+| ------------------ | --------------------- | --------------------------------------------------- |
+| Mar–Jun 2020       | 🔴 Lockdown 1         | ~500K rides/month — first national lockdown         |
+| Nov 2020–Jan 2021  | 🔴 Lockdown 2 + 3     | ~400K rides/month — deepest trough in dataset       |
+| Dec 2021–Jan 2022  | 🟡 Omicron / Plan B   | ~650K — work from home reintroduced                 |
 | Jan, Dec each year | 🔵 Winter seasonality | Natural trough — cold weather, short daylight hours |
 
 Despite pandemic disruption, each subsequent summer peak exceeded the last — **~1.1M in summer 2020, ~1.2M in 2021, reaching 1,302,994 in July 2022** — confirming underlying demand recovered and grew year-on-year.
@@ -496,14 +496,14 @@ Despite pandemic disruption, each subsequent summer peak exceeded the last — *
 
 Key data points directly from `citycycle_dev_marts.fact_rides`:
 
-| Month | Rides | Event |
-|-------|-------|-------|
-| Jan 2020 | ~700K | Pre-pandemic winter baseline |
-| Apr 2020 | ~500K | Lockdown 1 trough (−30%) |
-| Jul 2020 | ~1.1M | Post-lockdown summer recovery |
-| Jan 2021 | ~400K | Deepest trough — Lockdown 3 + winter seasonality compounding |
-| Jul 2022 | 1,302,994 | Dataset peak — full recovery confirmed |
-| Jan 2023 | ~240K | End of dataset winter trough (partial month) |
+| Month    | Rides     | Event                                                        |
+| -------- | --------- | ------------------------------------------------------------ |
+| Jan 2020 | ~700K     | Pre-pandemic winter baseline                                 |
+| Apr 2020 | ~500K     | Lockdown 1 trough (−30%)                                     |
+| Jul 2020 | ~1.1M     | Post-lockdown summer recovery                                |
+| Jan 2021 | ~400K     | Deepest trough — Lockdown 3 + winter seasonality compounding |
+| Jul 2022 | 1,302,994 | Dataset peak — full recovery confirmed                       |
+| Jan 2023 | ~240K     | End of dataset winter trough (partial month)                 |
 
 </details>
 
@@ -746,13 +746,13 @@ Date spine from 2015 to 2025:
 
 The current pipeline establishes the core ELT infrastructure, imbalance detection, and demand forecasting. The following extensions would move it toward a full production rebalancing system:
 
-| # | Improvement | Description |
-|---|-------------|-------------|
-| 01 | **Enrich the feature set** | Integrate TfL's live BikePoint API for real-time dock occupancy, Met Office weather data, and UK event calendars. Target: push R² from 0.488 toward 0.70+ by capturing exogenous demand signals. |
-| 02 | **Segment-aware rebalancing schedules** | Operationalise the K-Means segmentation — automatically tag stations by dominant rider type and generate differentiated crew schedules: pre-AM stocking for commuter stations on weekdays, mid-morning restocking for leisure stations on weekends. |
-| 03 | **Predictive dock capacity alert** | Surface same-day shortfall alerts when the XGBoost forecast predicts more departures than current bike count — before the imbalance accumulates over multiple days. |
-| 04 | **Expand to other cities** | The pipeline is city-agnostic. Pointing the Meltano tap at Dublin Bikes, New York Citi Bike, or Paris Vélib public datasets replicates the full intelligence pipeline with minimal rework. |
-| 05 | **Automate the full production pipeline** | Activate the Dagster `citycycle_daily_02utc` schedule — replace `mock_bq_load_asset` with `meltano_ingest_asset` to run nightly ingestion, transformation, and quality checks automatically. |
+| #   | Improvement                               | Description                                                                                                                                                                                                                                         |
+| --- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 01  | **Enrich the feature set**                | Integrate TfL's live BikePoint API for real-time dock occupancy, Met Office weather data, and UK event calendars. Target: push R² from 0.488 toward 0.70+ by capturing exogenous demand signals.                                                    |
+| 02  | **Segment-aware rebalancing schedules**   | Operationalise the K-Means segmentation — automatically tag stations by dominant rider type and generate differentiated crew schedules: pre-AM stocking for commuter stations on weekdays, mid-morning restocking for leisure stations on weekends. |
+| 03  | **Predictive dock capacity alert**        | Surface same-day shortfall alerts when the XGBoost forecast predicts more departures than current bike count — before the imbalance accumulates over multiple days.                                                                                 |
+| 04  | **Expand to other cities**                | The pipeline is city-agnostic. Pointing the Meltano tap at Dublin Bikes, New York Citi Bike, or Paris Vélib public datasets replicates the full intelligence pipeline with minimal rework.                                                          |
+| 05  | **Automate the full production pipeline** | Activate the Dagster `citycycle_daily_02utc` schedule — replace `mock_bq_load_asset` with `meltano_ingest_asset` to run nightly ingestion, transformation, and quality checks automatically.                                                        |
 
 ---
 
