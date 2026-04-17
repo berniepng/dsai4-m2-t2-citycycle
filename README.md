@@ -3,6 +3,8 @@
 > **dsai4-m2-t2-citycycle**  
 > End-to-end ELT pipeline for the London Bicycle Sharing dataset, built for the CityCycle operations team to solve the bike rebalancing problem using data engineering, ML forecasting, and interactive dashboards.
 
+![Banner Description](https://github.com/berniepng/dsai4-m2-t2-citycycle/blob/main/docs/_img/github-banner_citycycle.png)
+
 ---
 
 ## Table of Contents
